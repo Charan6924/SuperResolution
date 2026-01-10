@@ -41,13 +41,6 @@ This project implements a deep learning approach to single-image super-resolutio
    - Discriminator learning rate: 1e-4
    - Early stopping with patience of 8 epochs
 
-## Results
-
-[Add your metrics here after training]
-- PSNR: XX.XX dB
-- SSIM: 0.XXXX
-- Training time: ~X hours on A100/V100
-
 ## Requirements
 ```
 torch>=2.0.0
@@ -70,15 +63,3 @@ with torch.no_grad():
     hr_image = generator(lr_image)
 ```
 
-## Technologies
-
-- PyTorch 2.0+
-- CUDA for GPU acceleration
-- PIL/scikit-image for image processing
-```
-
----
-
-## **Even Shorter (GitHub "About" section):**
-```
-Super-resolution GAN upscaling 64×64→125×125 images using residual networks with attention mechanisms. PyTorch implementation.
