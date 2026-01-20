@@ -10,5 +10,5 @@ wheels/
 .venv
 .parquet
 data/
-
+.DS_Store
 checkpoints/
