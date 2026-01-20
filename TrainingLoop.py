@@ -24,34 +24,17 @@ else:
     tensor_dir = '/tmp/tensor_data'
     print(f"Running locally - using: {tensor_dir}")
 
-
-stats_path = os.path.join(tensor_dir, 'normalization_stats.pt')
-if not os.path.exists(stats_path):
-    raise FileNotFoundError(
-        f"Normalization stats not found at {stats_path}\n"
-        f"Run calculate_and_save_normalization_stats() first!"
-    )
-
-stats = torch.load(stats_path)
-print("\n" + "="*60)
-print("Loaded Normalization Statistics:")
-print(f"  LR: min={stats['lr_min']:.4f}, max={stats['lr_max']:.4f}")
-print(f"  HR: min={stats['hr_min']:.4f}, max={stats['hr_max']:.4f}")
-print(f"  LR 99.5th percentile: {stats['lr_p995']:.4f} (using for normalization)")
-print(f"  HR 99.5th percentile: {stats['hr_p995']:.4f} (using for normalization)")
-print("="*60 + "\n")
-
+stats = torch.load(os.path.join(tensor_dir, 'normalization_stats.pt'))
+lr_max = stats['lr_p995']
+hr_max = stats['hr_p995']
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 torch.backends.cudnn.benchmark = True  
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
-
 generator = Generator().to(device)
 discriminator = Discriminator().to(device)
-
 pixel_criterion = nn.MSELoss()
 adv_criterion = nn.MSELoss()
-
 g_optimizer = torch.optim.Adam(generator.parameters(), lr=1e-4, betas=(0.9, 0.999))
 d_optimizer = torch.optim.Adam(discriminator.parameters(), lr=1e-5, betas=(0.9, 0.999))  
 scaler = GradScaler('cuda')
@@ -59,8 +42,7 @@ scaler = GradScaler('cuda')
 pretrain_epochs = 10
 epochs = 100
 os.makedirs('checkpoints', exist_ok=True)
-
-resume_checkpoint = ""  
+resume_checkpoint = "checkpoints/checkpoint_epoch_011.pt"
 start_epoch = 0
 best_val_mse = float("inf")
 best_val_ssim = 0.0 
@@ -68,10 +50,12 @@ g_lossi = []
 d_lossi = []
 val_mse, val_psnr, val_ssim = [], [], []
 adv_weights = []
-
 torch.set_float32_matmul_precision('high')
+torch.backends.cudnn.benchmark = True  
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
 
-if resume_checkpoint and os.path.exists(resume_checkpoint):
+if os.path.exists(resume_checkpoint):
     print(f"Loading checkpoint from {resume_checkpoint}...")
     checkpoint = torch.load(resume_checkpoint, map_location=device, weights_only=False)
     generator.load_state_dict(checkpoint['generator'])
@@ -82,17 +66,18 @@ if resume_checkpoint and os.path.exists(resume_checkpoint):
     best_val_mse = checkpoint['val_mse']
     best_val_ssim = checkpoint.get('val_ssim', 0.0)  
     
-    print(f"✓ Resumed from epoch {checkpoint['epoch']}")
+    print(f" Resumed from epoch {checkpoint['epoch']}")
     print(f"  Previous Val MSE: {checkpoint['val_mse']:.6f}")
     print(f"  Previous PSNR: {checkpoint['val_psnr']:.2f} dB")
     print(f"  Previous SSIM: {checkpoint['val_ssim']:.4f}")
+    print(f"\n Starting GAN training with progressive adversarial loss")
+    print(f"  Initial λ_adv will be very small (~0.0001) and ramp up slowly")
 else:
-    print("No checkpoint found, starting from scratch\n")
+    print("No checkpoint found, starting from scratch")
 
 early_stopper = EarlyStopping(patience=15, min_delta=1e-4)
 
 print(f'Created models and loaded on {device}')
-
 train_dataset = JetImageDataset(
     tensor_dir=tensor_dir,
     split='train',
@@ -100,8 +85,8 @@ train_dataset = JetImageDataset(
     normalize=True,
     seed=42,
     max_batch_size=256,
-    lr_max=stats['lr_p995'],  
-    hr_max=stats['hr_p995']   
+    lr_max=lr_max,
+    hr_max=hr_max
 )
 
 val_dataset = JetImageDataset(
@@ -111,9 +96,31 @@ val_dataset = JetImageDataset(
     normalize=True,
     seed=42,
     max_batch_size=256,
-    lr_max=stats['lr_p995'], 
-    hr_max=stats['hr_p995']
+    lr_max=lr_max,
+    hr_max=hr_max
 )
+train_dataset = JetImageDataset(
+    tensor_dir=tensor_dir,
+    split='train',
+    train_ratio=0.8,
+    normalize=True,
+    seed=42,
+    max_batch_size=256,
+    lr_max=lr_max,
+    hr_max=hr_max
+)
+
+val_dataset = JetImageDataset(
+    tensor_dir=tensor_dir,
+    split='val',
+    train_ratio=0.8,
+    normalize=True,
+    seed=42,
+    max_batch_size=256,
+    lr_max=lr_max,
+    hr_max=hr_max
+)
+
 
 train_loader = DataLoader(
     train_dataset,
@@ -132,21 +139,18 @@ val_loader = DataLoader(
 )
 print('Created data loaders\n')
 
-print("Checking actual data range after normalization...")
-sample_loader = DataLoader(train_dataset, batch_size=None, num_workers=0)
+print("\nChecking actual data range...")
+sample_loader = DataLoader(
+    train_dataset, 
+    batch_size=None,
+    num_workers=0
+)
 for lr, hr in sample_loader:
-    print(f"  LR: min={lr.min():.4f}, max={lr.max():.4f}, mean={lr.mean():.4f}")
-    print(f"  HR: min={hr.min():.4f}, max={hr.max():.4f}, mean={hr.mean():.4f}")
-    
-    # Sanity check
-    if lr.max() < 0.5:
-        print("\n⚠️  WARNING: Data range looks too small!")
-        print("   Expected range: approximately [-0.2, 1.0]")
-        print("   Check normalization statistics calculation")
-    elif lr.min() > 0 and hr.min() > 0:
-        print("\n✓ Data range looks good (approximately [-0.2, 1.0])")
+    print(f"LR: min={lr.min():.4f}, max={lr.max():.4f}, mean={lr.mean():.4f}")
+    print(f"HR: min={hr.min():.4f}, max={hr.max():.4f}, mean={hr.mean():.4f}")
     break
 print()
+
 
 ssim_history = []
 ssim_warning_threshold = 0.3  
@@ -163,15 +167,17 @@ for epoch in range(start_epoch, epochs):
     pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}")
     for batch_idx, (lr, hr) in enumerate(pbar): 
         lr, hr = lr.to(device, non_blocking=True), hr.to(device, non_blocking=True)
-
+        
+        
         if torch.isnan(lr).any() or torch.isnan(hr).any():
             print(f"Corrupt data in batch {batch_idx} - SKIPPING")
             continue
-
-        if lr.min() < -1.0 or lr.max() > 2.0 or hr.min() < -1.0 or hr.max() > 2.0:
-            print(f"Data out of expected range! lr: [{lr.min():.2f}, {lr.max():.2f}], hr: [{hr.min():.2f}, {hr.max():.2f}]")
+    
+        if lr.min() < -2 or lr.max() > 2 or hr.min() < -2 or hr.max() > 2:
+            print(f"Data not normalized! lr: [{lr.min():.2f}, {lr.max():.2f}], hr: [{hr.min():.2f}, {hr.max():.2f}]")
             continue
         
+            
         train_count += 1
 
         if epoch < pretrain_epochs:
@@ -212,7 +218,7 @@ for epoch in range(start_epoch, epochs):
         avg_g_loss = g_epoch_loss / train_count
         avg_d_loss = d_epoch_loss / train_count if epoch >= pretrain_epochs else 0.0
     else:
-        print(f"Epoch {epoch+1}: SKIPPING (No valid training data)")
+        print(f"Epoch {epoch+1}: SKIPPING (No training data found)")
         continue
     
     with torch.no_grad():
@@ -223,16 +229,15 @@ for epoch in range(start_epoch, epochs):
     current_ssim = metrics["ssim"]
     ssim_history.append(current_ssim)
     
-    # Monitor SSIM degradation
     if epoch >= pretrain_epochs:
         if len(ssim_history) > 1:
             ssim_drop = ssim_history[-2] - current_ssim
-            if ssim_drop > 0.05:
-                print(f"SSIM dropped {ssim_drop:.4f} this epoch!")
+            if ssim_drop > 0.05:  # Dropped more than 0.05
+                print(f" SSIM dropped {ssim_drop:.4f} this epoch!")
         
         if current_ssim < ssim_warning_threshold:
             print(f"WARNING: SSIM at {current_ssim:.4f} (threshold: {ssim_warning_threshold})")
-
+    
     epoch_checkpoint = {
         "epoch": epoch,
         "generator": generator.state_dict(),
@@ -245,23 +250,26 @@ for epoch in range(start_epoch, epochs):
         "g_loss": avg_g_loss,
         "d_loss": avg_d_loss,
         "adv_weight": current_adv_weight,
-        "normalization_stats": stats  
     }
     
     torch.save(epoch_checkpoint, f"checkpoints/checkpoint_epoch_{epoch+1:03d}.pt")
+    print(f"Saved checkpoint for epoch {epoch+1}")
+    
     torch.save(epoch_checkpoint, "checkpoints/latest.pt")
-
+    
+    # Save best model - use SSIM after GAN starts, MSE during pretraining
     if epoch >= pretrain_epochs:
         if current_ssim > best_val_ssim:
             best_val_ssim = current_ssim
-            torch.save(epoch_checkpoint, "checkpoints/best_generator.pt")
-            print(f"New best model (SSIM: {current_ssim:.4f})")
+            torch.save(epoch_checkpoint, "best_generator.pt")
+            print(f"✓ Saved new best model (SSIM: {current_ssim:.4f})")
     else:
         if metrics["mse"] < best_val_mse:
             best_val_mse = metrics["mse"]
-            torch.save(epoch_checkpoint, "checkpoints/best_generator.pt")
-            print(f"New best model (MSE: {metrics['mse']:.6f})")
+            torch.save(epoch_checkpoint, "best_generator.pt")
+            print(f"✓ Saved new best model (MSE: {metrics['mse']:.6f})")
 
+    # Store metrics
     val_mse.append(metrics["mse"])
     val_psnr.append(metrics["psnr"])
     val_ssim.append(metrics["ssim"])
@@ -281,16 +289,15 @@ for epoch in range(start_epoch, epochs):
     early_stopper.step(metrics["mse"])
     
     if early_stopper.should_stop:
-        print(f"\nEarly stopping triggered at epoch {epoch+1}")
+        print(f"Early stopping triggered at epoch {epoch+1}")
         break
 
-print("\n" + "="*60)
-print("Training completed!")
+print("\nTraining completed!")
 print(f"Best validation MSE: {best_val_mse:.6f}")
 print(f"Best validation SSIM: {best_val_ssim:.4f}")
 print(f"Checkpoints saved in: checkpoints/")
-print("="*60)
 
+# training curves
 fig, axes = plt.subplots(2, 3, figsize=(18, 10))
 
 axes[0, 0].plot(range(start_epoch, start_epoch + len(g_lossi)), g_lossi, label='Generator Loss', color='blue')
@@ -346,4 +353,4 @@ axes[1, 2].grid(True, alpha=0.3)
 
 plt.tight_layout()
 plt.savefig('training_curves.png', dpi=150)
-print("\n✓ Saved training curves to training_curves.png")
+print("Saved training curves to training_curves.png")

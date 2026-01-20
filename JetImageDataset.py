@@ -27,11 +27,13 @@ class JetImageDataset(IterableDataset):
         self.seed = seed
         self.max_batch_size = max_batch_size
 
-        if normalize and (lr_max is None or hr_max is None):
-            print("Calculating global normalization statistics...")
-            self.lr_max, self.hr_max = self._calculate_global_stats()
-            print(f"Global LR max: {self.lr_max:.6f}")
-            print(f"Global HR max: {self.hr_max:.6f}")
+        if normalize:
+            if lr_max is None or hr_max is None:
+                raise RuntimeError(
+            "Normalization enabled but lr_max/hr_max not provided. "
+            "Run calculate_and_save_normalization_stats() once and pass the values.")
+            self.lr_max = lr_max
+            self.hr_max = hr_max
         else:
             self.lr_max = lr_max
             self.hr_max = hr_max
