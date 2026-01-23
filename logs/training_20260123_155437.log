@@ -1,0 +1,65 @@
+2026-01-23 15:54:37,447 - INFO - Logging to: logs/training_20260123_155437.log
+2026-01-23 15:54:37,448 - INFO - Metrics logging to: logs/metrics_20260123_155437.csv
+2026-01-23 15:54:37,448 - INFO - Using device: cuda
+2026-01-23 15:54:37,453 - INFO - Normalization stats - LR max: 3.6870, HR max: 6.6949
+2026-01-23 15:54:37,625 - INFO - Generator params: 1,441,878
+2026-01-23 15:54:37,625 - INFO - Discriminator params: 4,693,697
+2026-01-23 15:54:39,051 - INFO - Created all schedulers
+2026-01-23 15:54:39,053 - INFO - Created data loaders
+2026-01-23 15:54:39,053 - INFO - No checkpoint found, starting from scratch
+2026-01-23 15:54:39,053 - INFO - Checking data range...
+2026-01-23 15:54:39,436 - INFO - LR: min=-0.1109, max=1.0000, mean=0.0012
+2026-01-23 15:54:39,437 - INFO - HR: min=-0.2356, max=1.0000, mean=0.0007
+2026-01-23 15:54:39,439 - INFO - 
+Starting training for 200 epochs
+2026-01-23 15:54:39,439 - INFO - Pretraining: 10 epochs
+2026-01-23 15:54:39,440 - INFO - GAN training: 190 epochs
+2026-01-23 15:54:39,440 - INFO - Starting from epoch 0
+2026-01-23 15:58:04,087 - INFO - Saved checkpoint for epoch 1
+2026-01-23 15:58:04,280 - INFO - ✓ New best model (MSE: 0.000147)
+2026-01-23 15:58:04,284 - INFO - Epoch 001 | G Loss: 0.0002 | D Loss: 0.0000 | λ_adv: 0.000000 | Val MSE: 0.000147 | PSNR: 40.21 dB | SSIM: 0.8885 | G_LR: 1.00e-04 | D_LR: 0.00e+00
+2026-01-23 16:00:46,078 - INFO - Saved checkpoint for epoch 2
+2026-01-23 16:00:46,280 - INFO - ✓ New best model (MSE: 0.000139)
+2026-01-23 16:00:46,283 - INFO - Epoch 002 | G Loss: 0.0001 | D Loss: 0.0000 | λ_adv: 0.000000 | Val MSE: 0.000139 | PSNR: 40.45 dB | SSIM: 0.8958 | G_LR: 1.00e-04 | D_LR: 0.00e+00
+2026-01-23 16:03:28,033 - INFO - Saved checkpoint for epoch 3
+2026-01-23 16:03:28,227 - INFO - ✓ New best model (MSE: 0.000135)
+2026-01-23 16:03:28,229 - INFO - Epoch 003 | G Loss: 0.0001 | D Loss: 0.0000 | λ_adv: 0.000000 | Val MSE: 0.000135 | PSNR: 40.56 dB | SSIM: 0.8986 | G_LR: 1.00e-04 | D_LR: 0.00e+00
+2026-01-23 16:06:10,032 - INFO - Saved checkpoint for epoch 4
+2026-01-23 16:06:10,234 - INFO - ✓ New best model (MSE: 0.000133)
+2026-01-23 16:06:10,236 - INFO - Epoch 004 | G Loss: 0.0001 | D Loss: 0.0000 | λ_adv: 0.000000 | Val MSE: 0.000133 | PSNR: 40.63 dB | SSIM: 0.9005 | G_LR: 1.00e-04 | D_LR: 0.00e+00
+2026-01-23 16:08:52,075 - INFO - Saved checkpoint for epoch 5
+2026-01-23 16:08:52,281 - INFO - ✓ New best model (MSE: 0.000132)
+2026-01-23 16:08:52,284 - INFO - Epoch 005 | G Loss: 0.0001 | D Loss: 0.0000 | λ_adv: 0.000000 | Val MSE: 0.000132 | PSNR: 40.67 dB | SSIM: 0.9016 | G_LR: 1.00e-04 | D_LR: 0.00e+00
+2026-01-23 16:11:34,182 - INFO - Saved checkpoint for epoch 6
+2026-01-23 16:11:34,375 - INFO - ✓ New best model (MSE: 0.000131)
+2026-01-23 16:11:34,377 - INFO - Epoch 006 | G Loss: 0.0001 | D Loss: 0.0000 | λ_adv: 0.000000 | Val MSE: 0.000131 | PSNR: 40.71 dB | SSIM: 0.9027 | G_LR: 1.00e-04 | D_LR: 0.00e+00
+2026-01-23 16:14:16,185 - INFO - Saved checkpoint for epoch 7
+2026-01-23 16:14:16,400 - INFO - ✓ New best model (MSE: 0.000130)
+2026-01-23 16:14:16,403 - INFO - Epoch 007 | G Loss: 0.0001 | D Loss: 0.0000 | λ_adv: 0.000000 | Val MSE: 0.000130 | PSNR: 40.74 dB | SSIM: 0.9035 | G_LR: 1.00e-04 | D_LR: 0.00e+00
+2026-01-23 16:16:58,177 - INFO - Saved checkpoint for epoch 8
+2026-01-23 16:16:58,372 - INFO - ✓ New best model (MSE: 0.000129)
+2026-01-23 16:16:58,376 - INFO - Epoch 008 | G Loss: 0.0001 | D Loss: 0.0000 | λ_adv: 0.000000 | Val MSE: 0.000129 | PSNR: 40.77 dB | SSIM: 0.9042 | G_LR: 1.00e-04 | D_LR: 0.00e+00
+2026-01-23 16:19:40,212 - INFO - Saved checkpoint for epoch 9
+2026-01-23 16:19:40,414 - INFO - ✓ New best model (MSE: 0.000128)
+2026-01-23 16:19:40,418 - INFO - Epoch 009 | G Loss: 0.0001 | D Loss: 0.0000 | λ_adv: 0.000000 | Val MSE: 0.000128 | PSNR: 40.79 dB | SSIM: 0.9048 | G_LR: 1.00e-04 | D_LR: 0.00e+00
+2026-01-23 16:22:22,120 - INFO - Saved checkpoint for epoch 10
+2026-01-23 16:22:22,318 - INFO - ✓ New best model (MSE: 0.000127)
+2026-01-23 16:22:22,321 - INFO - Epoch 010 | G Loss: 0.0001 | D Loss: 0.0000 | λ_adv: 0.000000 | Val MSE: 0.000127 | PSNR: 40.83 dB | SSIM: 0.9055 | G_LR: 1.00e-04 | D_LR: 0.00e+00
+2026-01-23 16:25:45,059 - INFO - Saved checkpoint for epoch 11
+2026-01-23 16:25:45,433 - INFO - ✓ New best model (SSIM: 0.9066)
+2026-01-23 16:25:45,438 - INFO - Epoch 011 | G Loss: 0.0001 | D Loss: 0.1728 | λ_adv: 0.000001 | Val MSE: 0.000126 | PSNR: 40.86 dB | SSIM: 0.9066 | G_LR: 2.00e-05 | D_LR: 2.00e-05
+2026-01-23 16:29:23,413 - INFO - Saved checkpoint for epoch 12
+2026-01-23 16:29:23,762 - INFO - ✓ New best model (SSIM: 0.9072)
+2026-01-23 16:29:23,766 - INFO - Epoch 012 | G Loss: 0.0001 | D Loss: 0.0164 | λ_adv: 0.000159 | Val MSE: 0.000125 | PSNR: 40.89 dB | SSIM: 0.9072 | G_LR: 3.94e-05 | D_LR: 4.00e-05
+2026-01-23 16:32:44,852 - WARNING - SSIM dropped by 0.1265 (count: 1/5)
+2026-01-23 16:32:45,024 - INFO - Saved checkpoint for epoch 13
+2026-01-23 16:32:45,212 - INFO - Epoch 013 | G Loss: 0.0003 | D Loss: 0.0342 | λ_adv: 0.000224 | Val MSE: 0.000358 | PSNR: 36.33 dB | SSIM: 0.7807 | G_LR: 5.87e-05 | D_LR: 6.00e-05
+2026-01-23 16:36:06,410 - INFO - Saved checkpoint for epoch 14
+2026-01-23 16:36:06,599 - INFO - Epoch 014 | G Loss: 0.0003 | D Loss: 0.0292 | λ_adv: 0.000275 | Val MSE: 0.000250 | PSNR: 37.89 dB | SSIM: 0.8343 | G_LR: 7.78e-05 | D_LR: 4.00e-05
+2026-01-23 16:39:27,676 - WARNING - SSIM dropped by 0.0966 (count: 1/5)
+2026-01-23 16:39:27,858 - INFO - Saved checkpoint for epoch 15
+2026-01-23 16:39:28,025 - INFO - Epoch 015 | G Loss: 0.0004 | D Loss: 0.0263 | λ_adv: 0.000317 | Val MSE: 0.000529 | PSNR: 34.64 dB | SSIM: 0.7377 | G_LR: 9.68e-05 | D_LR: 4.99e-05
+2026-01-23 16:42:49,260 - INFO - Saved checkpoint for epoch 16
+2026-01-23 16:42:49,429 - INFO - Epoch 016 | G Loss: 0.0004 | D Loss: 0.0226 | λ_adv: 0.000354 | Val MSE: 0.000360 | PSNR: 36.31 dB | SSIM: 0.7634 | G_LR: 9.64e-05 | D_LR: 4.99e-05
+2026-01-23 16:46:10,664 - INFO - Saved checkpoint for epoch 17
+2026-01-23 16:46:10,847 - INFO - Epoch 017 | G Loss: 0.0005 | D Loss: 0.0182 | λ_adv: 0.000388 | Val MSE: 0.000256 | PSNR: 37.79 dB | SSIM: 0.8172 | G_LR: 9.60e-05 | D_LR: 4.99e-05

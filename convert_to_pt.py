@@ -10,7 +10,7 @@ parquet_files = [
     'data/QCDToGGQQ_IMGjet_RH1all_jet0_run2_n55494_LR.parquet'
 ]
 
-output_dir = os.path.join(os.environ['PFSDIR'], 'tensors')
+output_dir = "/mnt/vstor/courses/csds312/cxv166/csds312/ESRGAN/pt_data"
 os.makedirs(output_dir, exist_ok=True)
 ROWS_PER_CHUNK = 5000
 

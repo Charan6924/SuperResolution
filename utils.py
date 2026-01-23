@@ -2,6 +2,10 @@ import torch
 import torch.nn.functional as F
 import torch.nn as nn
 from torch.amp import autocast, GradScaler # type: ignore
+import logging
+import numpy as np
+
+logger = logging.getLogger(__name__)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 pixel_criterion = nn.MSELoss()
@@ -105,12 +109,8 @@ def set_epoch(epoch):
 lambda_pixel = 1.0
 
 
-def train_generator(generator, g_optimizer, discriminator, lr, hr, fake_hr, scaler):
+def train_generator(generator, g_optimizer, discriminator, lr, hr, fake_hr, scaler, lambda_adv):
     g_optimizer.zero_grad()
-    
-    current_epoch = training_state["current_epoch"]
-    pretrain_epochs = training_state["pretrain_epochs"]
-    lambda_adv = get_adversarial_weight(current_epoch, pretrain_epochs)
 
     with autocast('cuda'):
         fake_hr_clamped = torch.clamp(fake_hr, -0.3, 1.0)
@@ -123,7 +123,10 @@ def train_generator(generator, g_optimizer, discriminator, lr, hr, fake_hr, scal
             return 0.01, 0.01, 0.0
 
         pixel_loss = pixel_criterion(fake_hr_clamped, hr)
-        if current_epoch >= pretrain_epochs:
+        
+        # USE lambda_adv TO DETERMINE IF WE'RE IN GAN TRAINING
+        # If lambda_adv > 0, we're past pretraining
+        if lambda_adv > 0:  # CHANGED THIS LINE
             pred_fake = discriminator(fake_hr_clamped)
 
             if torch.isnan(pred_fake).any() or torch.isinf(pred_fake).any():
@@ -233,3 +236,157 @@ def collate_fn(batch):
     lr_batch = torch.stack([item[0] for item in batch])
     hr_batch = torch.stack([item[1] for item in batch])
     return lr_batch, hr_batch
+
+class AdversarialScheduler:
+    def __init__(
+        self, 
+        pretrain_epochs=10,
+        warmup_epochs=50,
+        min_weight=0.00001,
+        max_weight=0.001,
+        ssim_threshold=0.05,
+        patience=3,
+        reduction_factor=0.1
+    ):
+        self.pretrain_epochs = pretrain_epochs
+        self.warmup_epochs = warmup_epochs
+        self.min_weight = min_weight
+        self.max_weight = max_weight
+        self.ssim_threshold = ssim_threshold
+        self.patience = patience
+        self.reduction_factor = reduction_factor
+        
+        self.current_epoch = 0
+        self.ssim_history = []
+        self.degradation_count = 0
+        self.current_weight = 0.0
+        self.weight_multiplier = 1.0
+        
+    def step(self, epoch, current_ssim=None):
+        """Update adversarial weight for the current epoch."""
+        self.current_epoch = epoch
+        
+        if current_ssim is not None:
+            self._update_ssim_monitoring(current_ssim)
+        
+        base_weight = self._calculate_base_weight(epoch)
+        self.current_weight = base_weight * self.weight_multiplier
+        
+        return self.current_weight
+    
+    def _calculate_base_weight(self, epoch):
+        """Calculate base adversarial weight without SSIM adjustment."""
+        if epoch < self.pretrain_epochs:
+            return 0.0
+        
+        gan_epoch = epoch - self.pretrain_epochs
+        
+        if gan_epoch < self.warmup_epochs:
+            progress = gan_epoch / self.warmup_epochs
+            progress = progress ** 0.5  # Square root for smoother warmup
+            return self.min_weight + (self.max_weight - self.min_weight) * progress
+        
+        return self.max_weight
+    
+    def _update_ssim_monitoring(self, current_ssim):
+        """Monitor SSIM and adjust weight multiplier if degrading."""
+        self.ssim_history.append(current_ssim)
+        
+        if len(self.ssim_history) < 2:
+            return
+        
+        ssim_drop = self.ssim_history[-2] - current_ssim
+        
+        if ssim_drop > self.ssim_threshold:
+            self.degradation_count += 1
+            logger.warning(f"SSIM dropped by {ssim_drop:.4f} (count: {self.degradation_count}/{self.patience})")
+            
+            if self.degradation_count >= self.patience:
+                old_multiplier = self.weight_multiplier
+                self.weight_multiplier *= self.reduction_factor
+                logger.warning(f"Reducing adversarial weight: {old_multiplier:.6f} → {self.weight_multiplier:.6f}")
+                self.degradation_count = 0
+        else:
+            if self.degradation_count > 0:
+                self.degradation_count = max(0, self.degradation_count - 1)
+            
+            if current_ssim > 0.7 and self.weight_multiplier < 1.0:
+                self.weight_multiplier = min(1.0, self.weight_multiplier * 1.1)
+    
+    def get_weight(self):
+        """Get current adversarial weight."""
+        return self.current_weight
+    
+    def state_dict(self):
+        """Get scheduler state for checkpointing."""
+        return {
+            'current_epoch': self.current_epoch,
+            'ssim_history': self.ssim_history,
+            'degradation_count': self.degradation_count,
+            'current_weight': self.current_weight,
+            'weight_multiplier': self.weight_multiplier,
+        }
+    
+    def load_state_dict(self, state_dict):
+        """Load scheduler state from checkpoint."""
+        self.current_epoch = state_dict.get('current_epoch', 0)
+        self.ssim_history = state_dict.get('ssim_history', [])
+        self.degradation_count = state_dict.get('degradation_count', 0)
+        self.current_weight = state_dict.get('current_weight', 0.0)
+        self.weight_multiplier = state_dict.get('weight_multiplier', 1.0)
+
+class GAN_LRScheduler:
+    def __init__(self, optimizer_G, optimizer_D, config):
+        self.optimizer_G = optimizer_G
+        self.optimizer_D = optimizer_D
+        self.base_lr_G = config.get('lr_G', 1e-4)
+        self.base_lr_D = config.get('lr_D', 1e-5)
+        self.pretrain_epochs = config.get('pretrain_epochs', 10)
+        self.total_epochs = config.get('total_epochs', 200)
+        self.warmup_epochs = config.get('warmup_epochs', 5)
+        self.d_loss_history = []
+        self.g_loss_history = []
+        self.patience_counter = 0
+        
+    def step(self, epoch, d_loss, g_loss, lambda_adv):        
+        self.d_loss_history.append(d_loss)
+        self.g_loss_history.append(g_loss)
+        
+        if epoch < self.pretrain_epochs:
+            lr_G = self.base_lr_G
+            lr_D = 0 
+            
+        else:
+            gan_epoch = epoch - self.pretrain_epochs
+            gan_total = self.total_epochs - self.pretrain_epochs
+            progress = gan_epoch / gan_total
+            adv_factor = 1.0 / (1.0 + lambda_adv * 100)
+            cosine_factor = 0.5 * (1 + np.cos(np.pi * progress))
+            if gan_epoch < self.warmup_epochs:
+                warmup_factor = (gan_epoch + 1) / self.warmup_epochs
+            else:
+                warmup_factor = 1.0
+            
+            lr_G = self.base_lr_G * adv_factor * cosine_factor * warmup_factor
+            if len(self.d_loss_history) >= 3:
+                recent_d_loss = np.mean(self.d_loss_history[-3:])
+                
+                if recent_d_loss < 0.01:  # D too strong
+                    d_strength_factor = 0.5
+                elif recent_d_loss > 0.05:  # D too weak
+                    d_strength_factor = 2.0
+                else:
+                    d_strength_factor = 1.0
+            else:
+                d_strength_factor = 1.0
+            
+            lr_D = self.base_lr_D * d_strength_factor * cosine_factor * warmup_factor
+            lr_G = np.clip(lr_G, 1e-7, self.base_lr_G)
+            lr_D = np.clip(lr_D, 1e-7, self.base_lr_D * 2)
+        for param_group in self.optimizer_G.param_groups:
+            param_group['lr'] = lr_G
+        
+        for param_group in self.optimizer_D.param_groups:
+            param_group['lr'] = lr_D
+        
+        return lr_G, lr_D

@@ -212,7 +212,7 @@ def calculate_and_save_normalization_stats(tensor_dir):
 
 
 if __name__ == "__main__":
-    tensor_dir = os.path.join(os.environ['PFSDIR'], 'tensors')
+    tensor_dir = "/mnt/vstor/courses/csds312/cxv166/csds312/ESRGAN/pt_data"
     stats = calculate_and_save_normalization_stats(tensor_dir)
     train_dataset = JetImageDataset(
         tensor_dir=tensor_dir,
