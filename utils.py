@@ -30,7 +30,7 @@ def psnr(sr, hr, max_val=1.24):  # 1.24 covers [-0.24, 1.0] range
     return 10 * torch.log10((max_val ** 2) / mse)
 
 def ssim(sr, hr, C1=0.01**2, C2=0.03**2):
-    """Compute SSIM with"""
+    """Compute SSIM"""
     eps = 1e-8
     
     mu_x = sr.mean(dim=(-1, -2), keepdim=True)
@@ -65,7 +65,7 @@ def validate(generator, val_loader):
             mse_loss = F.mse_loss(sr, hr, reduction="mean")
 
         total_mse += mse_loss.item() * lr.size(0)
-        total_psnr += psnr(sr, hr).item() * lr.size(0)  # Uses max_val=1.24
+        total_psnr += psnr(sr, hr).item() * lr.size(0)
         total_ssim += ssim(sr, hr).item() * lr.size(0)
         n += lr.size(0)
 
@@ -83,25 +83,6 @@ def validate(generator, val_loader):
         "ssim": avg_ssim,
     }
 
-def get_adversarial_weight(epoch, pretrain_epochs, warmup_epochs=50):
-    if epoch < pretrain_epochs:
-        return 0.0
-    
-    gan_epoch = epoch - pretrain_epochs
-    
-    # Check for SSIM degradation - pause adversarial training if needed
-    if training_state["ssim_degradation_count"] >= 3:
-        print("SSIM degrading - reducing adversarial weight")
-        return 0.00001 
-    
-    if gan_epoch < warmup_epochs:
-        min_weight = 0.00001
-        max_weight = 0.001
-        progress = (gan_epoch / warmup_epochs) ** 0.5
-        return min_weight + (max_weight - min_weight) * progress
-    else:
-        return 0.001  
-
 def set_epoch(epoch):
     """Call this at the start of each epoch"""
     training_state["current_epoch"] = epoch
@@ -112,25 +93,24 @@ lambda_pixel = 1.0
 def train_generator(generator, g_optimizer, discriminator, lr, hr, fake_hr, scaler, lambda_adv):
     g_optimizer.zero_grad()
 
-    with autocast('cuda'):
+    with autocast('cuda', dtype=torch.bfloat16):
         fake_hr_clamped = torch.clamp(fake_hr, -0.3, 1.0)
         if torch.isnan(fake_hr_clamped).any() or torch.isinf(fake_hr_clamped).any():
-            print(f"SKIPPING BATCH: NaN/Inf in fake_hr")
-            return 0.01, 0.01, 0.0  
+            logger.warning(f"SKIPPING BATCH: NaN/Inf in fake_hr")
+            return 0.01, 0.01, 0.0
         
         if torch.isnan(hr).any() or torch.isinf(hr).any():
-            print(f"SKIPPING BATCH: NaN/Inf in hr (data corruption!)")
+            logger.warning(f"SKIPPING BATCH: NaN/Inf in hr (data corruption!)")
             return 0.01, 0.01, 0.0
 
         pixel_loss = pixel_criterion(fake_hr_clamped, hr)
         
-        # USE lambda_adv TO DETERMINE IF WE'RE IN GAN TRAINING
-        # If lambda_adv > 0, we're past pretraining
-        if lambda_adv > 0:  # CHANGED THIS LINE
+        # Use lambda_adv to determine if we're in GAN training
+        if lambda_adv > 0:
             pred_fake = discriminator(fake_hr_clamped)
 
             if torch.isnan(pred_fake).any() or torch.isinf(pred_fake).any():
-                print(f"SKIPPING BATCH: NaN/Inf from discriminator")
+                logger.warning(f"SKIPPING BATCH: NaN/Inf from discriminator")
                 return 0.01, 0.01, 0.0
             
             adv_targets = torch.ones_like(pred_fake)
@@ -142,18 +122,18 @@ def train_generator(generator, g_optimizer, discriminator, lr, hr, fake_hr, scal
     
     if torch.isnan(g_loss) or torch.isinf(g_loss):
         training_state["nan_count"]["generator"] += 1
-        print(f"NaN/Inf in G loss! pixel={pixel_loss.item():.4f}, adv={adv_loss.item():.4f}")
+        logger.warning(f"NaN/Inf in G loss! pixel={pixel_loss.item():.4f}, adv={adv_loss.item():.4f}")
         return 0.01, 0.01, 0.0
     
-    if g_loss.item() > 2.0: 
-        print(f"EXTREME G loss: {g_loss.item():.4f} - SKIPPING BATCH")
-        print(f"   pixel={pixel_loss.item():.4f}, adv={adv_loss.item():.4f}")
+    if g_loss.item() > 2.0:
+        logger.warning(f"EXTREME G loss: {g_loss.item():.4f} - SKIPPING BATCH")
+        logger.warning(f"   pixel={pixel_loss.item():.4f}, adv={adv_loss.item():.4f}")
         return 0.01, 0.01, 0.0
     
     scaler.scale(g_loss).backward()
     scaler.unscale_(g_optimizer)
     
-    torch.nn.utils.clip_grad_norm_(generator.parameters(), max_norm=0.5)
+    torch.nn.utils.clip_grad_norm_(generator.parameters(), max_norm=1.0)
     total_norm = 0.0
     for p in generator.parameters():
         if p.grad is not None:
@@ -161,8 +141,8 @@ def train_generator(generator, g_optimizer, discriminator, lr, hr, fake_hr, scal
             total_norm += param_norm.item() ** 2
     total_norm = total_norm ** 0.5
     
-    if total_norm > 10.0:  
-        print(f"Gradient explosion: {total_norm:.2f} - SKIPPING STEP")
+    if total_norm > 10.0:
+        logger.warning(f"Gradient explosion: {total_norm:.2f} - SKIPPING STEP")
         g_optimizer.zero_grad()
         return 0.01, 0.01, 0.0
     
@@ -172,37 +152,65 @@ def train_generator(generator, g_optimizer, discriminator, lr, hr, fake_hr, scal
     return g_loss.item(), pixel_loss.item(), adv_loss.item() if isinstance(adv_loss, torch.Tensor) else 0.0
 
 
-def train_discriminator(discriminator, d_optimizer, real_hr, fake_hr, scaler, train_d=True):
+def train_discriminator(discriminator, d_optimizer, real_hr, fake_hr, scaler, train_d=True, lambda_gp=0.0):
+    """
+    Train discriminator with gradient penalty for stability
+    """
     if not train_d:
         return 0.0
     
     d_optimizer.zero_grad()
     
-    with autocast('cuda'):
+    with autocast('cuda', dtype=torch.bfloat16):
         real_hr = torch.clamp(real_hr, -0.3, 1.0)
         fake_hr = torch.clamp(fake_hr, -0.3, 1.0)
         
         if torch.isnan(real_hr).any() or torch.isinf(real_hr).any():
-            print(f"SKIPPING D: NaN/Inf in real_hr")
+            logger.warning(f"SKIPPING D: NaN/Inf in real_hr")
             return 0.0
         
         if torch.isnan(fake_hr).any() or torch.isinf(fake_hr).any():
-            print(f"SKIPPING D: NaN/Inf in fake_hr")
+            logger.warning(f"SKIPPING D: NaN/Inf in fake_hr")
             return 0.0
         
+        # Real and fake predictions
         pred_real = discriminator(real_hr)
-        real_targets = torch.ones_like(pred_real) * 0.85  
+        real_targets = torch.ones_like(pred_real) * 0.9  # Label smoothing
         loss_real = adv_criterion(pred_real, real_targets)
         
         pred_fake = discriminator(fake_hr.detach())
-        fake_targets = torch.zeros_like(pred_fake) + 0.15  
+        fake_targets = torch.zeros_like(pred_fake) + 0.1  # Label smoothing
         loss_fake = adv_criterion(pred_fake, fake_targets)
         
         d_loss = 0.5 * (loss_real + loss_fake)
+        
+        # Add gradient penalty for stability (WGAN-GP style)
+        if lambda_gp > 0:
+            alpha = torch.rand(real_hr.size(0), 1, 1, 1, device=real_hr.device)
+            interpolated = (alpha * real_hr + (1 - alpha) * fake_hr.detach()).requires_grad_(True)
+            
+            # Need to compute gradient penalty in float32 for numerical stability
+            with autocast('cuda', enabled=False):
+                interpolated_float = interpolated.float()
+                interpolated_validity = discriminator(interpolated_float)
+            
+            gradients = torch.autograd.grad(
+                outputs=interpolated_validity,
+                inputs=interpolated_float,
+                grad_outputs=torch.ones_like(interpolated_validity),
+                create_graph=True,
+                retain_graph=True,
+            )[0]
+            
+            gradients = gradients.view(real_hr.size(0), -1)
+            gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+            
+            # Add gradient penalty to discriminator loss
+            d_loss = d_loss + lambda_gp * gradient_penalty
     
-    if torch.isnan(d_loss) or torch.isinf(d_loss) or d_loss.item() > 1.0:
+    if torch.isnan(d_loss) or torch.isinf(d_loss) or d_loss.item() > 5.0:
         training_state["nan_count"]["discriminator"] += 1
-        print(f"Bad D loss: {d_loss.item():.4f}")
+        logger.warning(f"Bad D loss: {d_loss.item():.4f}")
         return 0.0
     
     scaler.scale(d_loss).backward()
@@ -213,40 +221,48 @@ def train_discriminator(discriminator, d_optimizer, real_hr, fake_hr, scaler, tr
 
     return d_loss.item()
 
+
 def should_train_discriminator(batch_idx, epoch, pretrain_epochs):
+    """
+    Determines when to train the discriminator.
+    More conservative early in GAN training to prevent collapse.
+    """
     if epoch < pretrain_epochs:
         return False
     
     gan_epoch = epoch - pretrain_epochs
 
+    # First 10 epochs: train D only 1/3 of the time
     if gan_epoch < 10:
         return batch_idx % 3 == 0
-    elif gan_epoch < 20:
+    # Next 20 epochs: train D 1/2 of the time
+    elif gan_epoch < 30:
         return batch_idx % 2 == 0
+    # After 30 GAN epochs: train D every iteration
     else:
         return True
 
-def get_current_adv_weight():
-    return get_adversarial_weight(
-        training_state["current_epoch"], 
-        training_state["pretrain_epochs"]
-    )
 
 def collate_fn(batch):
     lr_batch = torch.stack([item[0] for item in batch])
     hr_batch = torch.stack([item[1] for item in batch])
     return lr_batch, hr_batch
 
+
 class AdversarialScheduler:
+    """
+    Manages adversarial loss weight with automatic reduction on SSIM degradation.
+    More conservative settings to prevent mode collapse.
+    """
     def __init__(
         self, 
         pretrain_epochs=10,
-        warmup_epochs=50,
-        min_weight=0.00001,
-        max_weight=0.001,
-        ssim_threshold=0.05,
-        patience=3,
-        reduction_factor=0.1
+        warmup_epochs=150,  # Increased from 50 - slower ramp
+        min_weight=0.000001,
+        max_weight=0.00005,  # Reduced from 0.001 - gentler adversarial
+        ssim_threshold=0.02,
+        patience=2,  # Reduced from 5 - faster response
+        reduction_factor=0.5  # More aggressive reduction from 0.5
     ):
         self.pretrain_epochs = pretrain_epochs
         self.warmup_epochs = warmup_epochs
@@ -283,7 +299,8 @@ class AdversarialScheduler:
         
         if gan_epoch < self.warmup_epochs:
             progress = gan_epoch / self.warmup_epochs
-            progress = progress ** 0.5  # Square root for smoother warmup
+            # Cubic warmup for even smoother transition
+            progress = progress ** 5
             return self.min_weight + (self.max_weight - self.min_weight) * progress
         
         return self.max_weight
@@ -307,11 +324,13 @@ class AdversarialScheduler:
                 logger.warning(f"Reducing adversarial weight: {old_multiplier:.6f} → {self.weight_multiplier:.6f}")
                 self.degradation_count = 0
         else:
+            # Slowly decay the degradation count if SSIM is stable/improving
             if self.degradation_count > 0:
                 self.degradation_count = max(0, self.degradation_count - 1)
             
-            if current_ssim > 0.7 and self.weight_multiplier < 1.0:
-                self.weight_multiplier = min(1.0, self.weight_multiplier * 1.1)
+            # Slowly recover weight multiplier if SSIM is good and stable
+            if current_ssim > 0.91 and self.weight_multiplier < 1.0:
+                self.weight_multiplier = min(1.0, self.weight_multiplier * 1.02)
     
     def get_weight(self):
         """Get current adversarial weight."""
@@ -335,15 +354,20 @@ class AdversarialScheduler:
         self.current_weight = state_dict.get('current_weight', 0.0)
         self.weight_multiplier = state_dict.get('weight_multiplier', 1.0)
 
+
 class GAN_LRScheduler:
+    """
+    Learning rate scheduler for GAN training.
+    More conservative discriminator learning rate to prevent it from becoming too strong.
+    """
     def __init__(self, optimizer_G, optimizer_D, config):
         self.optimizer_G = optimizer_G
         self.optimizer_D = optimizer_D
         self.base_lr_G = config.get('lr_G', 1e-4)
-        self.base_lr_D = config.get('lr_D', 1e-5)
+        self.base_lr_D = config.get('lr_D', 2e-5)  # Reduced from 5e-5
         self.pretrain_epochs = config.get('pretrain_epochs', 10)
         self.total_epochs = config.get('total_epochs', 200)
-        self.warmup_epochs = config.get('warmup_epochs', 5)
+        self.warmup_epochs = config.get('warmup_epochs', 15)  # Increased from 5
         self.d_loss_history = []
         self.g_loss_history = []
         self.patience_counter = 0
@@ -360,29 +384,40 @@ class GAN_LRScheduler:
             gan_epoch = epoch - self.pretrain_epochs
             gan_total = self.total_epochs - self.pretrain_epochs
             progress = gan_epoch / gan_total
-            adv_factor = 1.0 / (1.0 + lambda_adv * 100)
+            
+            # Reduce G learning rate as adversarial weight increases
+            adv_factor = 1.0 / (1.0 + lambda_adv * 200)  # Increased from 100
             cosine_factor = 0.5 * (1 + np.cos(np.pi * progress))
+            
+            # Gentler warmup
             if gan_epoch < self.warmup_epochs:
                 warmup_factor = (gan_epoch + 1) / self.warmup_epochs
+                warmup_factor = warmup_factor ** 0.5  # Square root for smoother warmup
             else:
                 warmup_factor = 1.0
             
             lr_G = self.base_lr_G * adv_factor * cosine_factor * warmup_factor
+            
+            # Adaptive discriminator learning rate based on its performance
             if len(self.d_loss_history) >= 3:
                 recent_d_loss = np.mean(self.d_loss_history[-3:])
                 
-                if recent_d_loss < 0.01:  # D too strong
-                    d_strength_factor = 0.5
-                elif recent_d_loss > 0.05:  # D too weak
-                    d_strength_factor = 2.0
+                if recent_d_loss < 0.01:  # D too strong - slow it down
+                    d_strength_factor = 0.3  # More aggressive reduction
+                elif recent_d_loss > 0.1:  # D too weak - speed it up
+                    d_strength_factor = 1.5
                 else:
                     d_strength_factor = 1.0
             else:
                 d_strength_factor = 1.0
             
             lr_D = self.base_lr_D * d_strength_factor * cosine_factor * warmup_factor
+            
+            # Clip learning rates to safe ranges
             lr_G = np.clip(lr_G, 1e-7, self.base_lr_G)
             lr_D = np.clip(lr_D, 1e-7, self.base_lr_D * 2)
+        
+        # Apply learning rates
         for param_group in self.optimizer_G.param_groups:
             param_group['lr'] = lr_G
         

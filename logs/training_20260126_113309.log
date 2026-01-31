@@ -1,0 +1,143 @@
+2026-01-26 11:33:09,142 - INFO - Logging to: logs\training_20260126_113309.log
+2026-01-26 11:33:09,142 - INFO - Metrics logging to: logs\metrics_20260126_113309.csv
+2026-01-26 11:33:09,142 - INFO - Using device: cuda
+2026-01-26 11:33:09,142 - INFO - PyTorch version: 2.6.0+cu124
+2026-01-26 11:33:09,152 - INFO - Normalization stats - LR max: 3.6391, HR max: 6.6261
+2026-01-26 11:33:09,297 - INFO - Generator params: 1,441,878
+2026-01-26 11:33:09,299 - INFO - Discriminator params: 4,693,697
+2026-01-26 11:33:09,299 - INFO - Loading checkpoint from D:\SuperResolution\checkpoints\checkpoint_epoch_050.pt...
+2026-01-26 11:33:09,394 - INFO - Loaded checkpoint from epoch 49
+2026-01-26 11:33:09,394 - INFO - Previous Val MSE: 0.000108
+2026-01-26 11:33:09,394 - INFO - Previous PSNR: 41.52 dB
+2026-01-26 11:33:09,395 - INFO - Previous SSIM: 0.9228
+2026-01-26 11:33:09,395 - INFO - Starting from epoch 50
+2026-01-26 11:33:09,395 - INFO - ================================================================================
+2026-01-26 11:33:09,395 - INFO - Compiling models with torch.compile (mode='reduce-overhead')...
+2026-01-26 11:33:09,395 - INFO - This will provide good speedup without requiring Triton
+2026-01-26 11:33:09,395 - INFO - ================================================================================
+2026-01-26 11:33:10,162 - INFO - SUCCESS: Loaded optimizer states from checkpoint
+2026-01-26 11:33:10,162 - INFO - Created all schedulers
+2026-01-26 11:33:10,164 - INFO - Created data loaders
+2026-01-26 11:33:10,164 - INFO - Checking data range...
+2026-01-26 11:33:10,637 - INFO - LR: min=-0.1123, max=1.0000, mean=0.0012
+2026-01-26 11:33:10,639 - INFO - HR: min=-0.2381, max=1.0000, mean=0.0007
+2026-01-26 11:33:10,639 - INFO - 
+Starting training for 200 epochs
+2026-01-26 11:33:10,639 - INFO - Pretraining: 10 epochs
+2026-01-26 11:33:10,639 - INFO - GAN training: 190 epochs
+2026-01-26 11:33:10,639 - INFO - Starting from epoch 50
+2026-01-26 11:41:20,888 - INFO - Saved checkpoint for epoch 51
+2026-01-26 11:41:21,048 - INFO - New best model (SSIM: 0.9228)
+2026-01-26 11:41:21,048 - INFO - Epoch 051 | G Loss: 0.0001 | D Loss: 0.0001 | lambda_adv: 0.000001 | Val MSE: 0.000108 | PSNR: 41.55 dB | SSIM: 0.9228 | G_LR: 8.94e-05 | D_LR: 1.79e-05
+2026-01-26 11:50:09,099 - INFO - Saved checkpoint for epoch 52
+2026-01-26 11:50:09,181 - INFO - Epoch 052 | G Loss: 0.0001 | D Loss: 0.0001 | lambda_adv: 0.000001 | Val MSE: 0.000108 | PSNR: 41.55 dB | SSIM: 0.9228 | G_LR: 8.89e-05 | D_LR: 1.78e-05
+2026-01-26 11:58:28,972 - INFO - Saved checkpoint for epoch 53
+2026-01-26 11:58:29,140 - INFO - New best model (SSIM: 0.9230)
+2026-01-26 11:58:29,140 - INFO - Epoch 053 | G Loss: 0.0001 | D Loss: 0.0001 | lambda_adv: 0.000001 | Val MSE: 0.000107 | PSNR: 41.56 dB | SSIM: 0.9230 | G_LR: 8.84e-05 | D_LR: 5.31e-06
+2026-01-26 12:06:50,769 - INFO - Saved checkpoint for epoch 54
+2026-01-26 12:06:50,850 - INFO - Epoch 054 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000001 | Val MSE: 0.000107 | PSNR: 41.56 dB | SSIM: 0.9230 | G_LR: 8.79e-05 | D_LR: 5.27e-06
+2026-01-26 12:15:12,817 - INFO - Saved checkpoint for epoch 55
+2026-01-26 12:15:12,911 - INFO - Epoch 055 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000001 | Val MSE: 0.000107 | PSNR: 41.56 dB | SSIM: 0.9230 | G_LR: 8.73e-05 | D_LR: 5.24e-06
+2026-01-26 12:23:28,305 - INFO - Saved checkpoint for epoch 56
+2026-01-26 12:23:28,455 - INFO - New best model (SSIM: 0.9233)
+2026-01-26 12:23:28,476 - INFO - Epoch 056 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000001 | Val MSE: 0.000107 | PSNR: 41.57 dB | SSIM: 0.9233 | G_LR: 8.68e-05 | D_LR: 5.21e-06
+2026-01-26 12:31:52,105 - INFO - Saved checkpoint for epoch 57
+2026-01-26 12:31:52,288 - INFO - New best model (SSIM: 0.9235)
+2026-01-26 12:31:52,308 - INFO - Epoch 057 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000001 | Val MSE: 0.000107 | PSNR: 41.57 dB | SSIM: 0.9235 | G_LR: 8.62e-05 | D_LR: 5.17e-06
+2026-01-26 12:40:18,789 - INFO - Saved checkpoint for epoch 58
+2026-01-26 12:40:18,997 - INFO - New best model (SSIM: 0.9235)
+2026-01-26 12:40:19,023 - INFO - Epoch 058 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000001 | Val MSE: 0.000107 | PSNR: 41.57 dB | SSIM: 0.9235 | G_LR: 8.56e-05 | D_LR: 5.14e-06
+2026-01-26 12:48:41,775 - INFO - Saved checkpoint for epoch 59
+2026-01-26 12:48:41,948 - INFO - New best model (SSIM: 0.9235)
+2026-01-26 12:48:41,974 - INFO - Epoch 059 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000001 | Val MSE: 0.000107 | PSNR: 41.58 dB | SSIM: 0.9235 | G_LR: 8.50e-05 | D_LR: 5.10e-06
+2026-01-26 12:56:11,518 - INFO - Saved checkpoint for epoch 60
+2026-01-26 12:56:11,671 - INFO - New best model (SSIM: 0.9237)
+2026-01-26 12:56:11,927 - INFO - Epoch 060 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000001 | Val MSE: 0.000107 | PSNR: 41.58 dB | SSIM: 0.9237 | G_LR: 8.44e-05 | D_LR: 5.07e-06
+2026-01-26 13:04:13,142 - INFO - Saved checkpoint for epoch 61
+2026-01-26 13:04:13,320 - INFO - New best model (SSIM: 0.9237)
+2026-01-26 13:04:13,339 - INFO - Epoch 061 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000001 | Val MSE: 0.000107 | PSNR: 41.58 dB | SSIM: 0.9237 | G_LR: 8.38e-05 | D_LR: 5.03e-06
+2026-01-26 13:12:27,577 - INFO - Saved checkpoint for epoch 62
+2026-01-26 13:12:27,672 - INFO - Epoch 062 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000001 | Val MSE: 0.000107 | PSNR: 41.56 dB | SSIM: 0.9232 | G_LR: 8.32e-05 | D_LR: 5.00e-06
+2026-01-26 13:19:56,844 - INFO - Saved checkpoint for epoch 63
+2026-01-26 13:19:56,946 - INFO - Epoch 063 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000001 | Val MSE: 0.000107 | PSNR: 41.57 dB | SSIM: 0.9236 | G_LR: 8.26e-05 | D_LR: 4.96e-06
+2026-01-26 13:27:30,459 - INFO - Saved checkpoint for epoch 64
+2026-01-26 13:27:30,564 - INFO - Epoch 064 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000001 | Val MSE: 0.000108 | PSNR: 41.55 dB | SSIM: 0.9233 | G_LR: 8.20e-05 | D_LR: 4.92e-06
+2026-01-26 13:35:02,292 - INFO - Saved checkpoint for epoch 65
+2026-01-26 13:35:02,481 - INFO - Epoch 065 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000001 | Val MSE: 0.000107 | PSNR: 41.56 dB | SSIM: 0.9233 | G_LR: 8.13e-05 | D_LR: 4.88e-06
+2026-01-26 13:42:34,165 - INFO - Saved checkpoint for epoch 66
+2026-01-26 13:42:34,722 - INFO - Epoch 066 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000001 | Val MSE: 0.000107 | PSNR: 41.56 dB | SSIM: 0.9234 | G_LR: 8.07e-05 | D_LR: 4.84e-06
+2026-01-26 13:50:17,441 - INFO - Saved checkpoint for epoch 67
+2026-01-26 13:50:17,562 - INFO - Epoch 067 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000001 | Val MSE: 0.000107 | PSNR: 41.57 dB | SSIM: 0.9234 | G_LR: 8.00e-05 | D_LR: 4.80e-06
+2026-01-26 13:57:45,935 - INFO - Saved checkpoint for epoch 68
+2026-01-26 13:57:46,079 - INFO - Epoch 068 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000001 | Val MSE: 0.000107 | PSNR: 41.57 dB | SSIM: 0.9235 | G_LR: 7.94e-05 | D_LR: 4.76e-06
+2026-01-26 14:05:19,553 - INFO - Saved checkpoint for epoch 69
+2026-01-26 14:05:19,715 - INFO - New best model (SSIM: 0.9238)
+2026-01-26 14:05:19,737 - INFO - Epoch 069 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000001 | Val MSE: 0.000107 | PSNR: 41.58 dB | SSIM: 0.9238 | G_LR: 7.87e-05 | D_LR: 4.72e-06
+2026-01-26 14:12:51,588 - INFO - Saved checkpoint for epoch 70
+2026-01-26 14:12:51,679 - INFO - Epoch 070 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000001 | Val MSE: 0.000107 | PSNR: 41.58 dB | SSIM: 0.9237 | G_LR: 7.80e-05 | D_LR: 4.68e-06
+2026-01-26 14:20:29,877 - INFO - Saved checkpoint for epoch 71
+2026-01-26 14:20:29,962 - INFO - Epoch 071 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000002 | Val MSE: 0.000107 | PSNR: 41.56 dB | SSIM: 0.9235 | G_LR: 7.73e-05 | D_LR: 4.64e-06
+2026-01-26 14:28:09,990 - INFO - Saved checkpoint for epoch 72
+2026-01-26 14:28:10,086 - INFO - Epoch 072 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000002 | Val MSE: 0.000108 | PSNR: 41.55 dB | SSIM: 0.9233 | G_LR: 7.66e-05 | D_LR: 4.60e-06
+2026-01-26 14:35:49,585 - INFO - Saved checkpoint for epoch 73
+2026-01-26 14:35:49,694 - INFO - Epoch 073 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000002 | Val MSE: 0.000108 | PSNR: 41.56 dB | SSIM: 0.9235 | G_LR: 7.59e-05 | D_LR: 4.56e-06
+2026-01-26 14:43:45,647 - INFO - Saved checkpoint for epoch 74
+2026-01-26 14:43:45,752 - INFO - Epoch 074 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000002 | Val MSE: 0.000107 | PSNR: 41.56 dB | SSIM: 0.9238 | G_LR: 7.52e-05 | D_LR: 4.51e-06
+2026-01-26 14:51:32,910 - INFO - Saved checkpoint for epoch 75
+2026-01-26 14:51:33,065 - INFO - New best model (SSIM: 0.9238)
+2026-01-26 14:51:33,076 - INFO - Epoch 075 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000002 | Val MSE: 0.000107 | PSNR: 41.57 dB | SSIM: 0.9238 | G_LR: 7.45e-05 | D_LR: 4.47e-06
+2026-01-26 14:59:20,761 - INFO - Saved checkpoint for epoch 76
+2026-01-26 14:59:21,056 - INFO - New best model (SSIM: 0.9240)
+2026-01-26 14:59:21,192 - INFO - Epoch 076 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000002 | Val MSE: 0.000107 | PSNR: 41.57 dB | SSIM: 0.9240 | G_LR: 7.38e-05 | D_LR: 4.43e-06
+2026-01-26 15:07:01,486 - INFO - Saved checkpoint for epoch 77
+2026-01-26 15:07:01,638 - INFO - New best model (SSIM: 0.9240)
+2026-01-26 15:07:01,658 - INFO - Epoch 077 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000002 | Val MSE: 0.000107 | PSNR: 41.58 dB | SSIM: 0.9240 | G_LR: 7.30e-05 | D_LR: 4.38e-06
+2026-01-26 15:14:42,085 - INFO - Saved checkpoint for epoch 78
+2026-01-26 15:14:42,255 - INFO - New best model (SSIM: 0.9241)
+2026-01-26 15:14:42,281 - INFO - Epoch 078 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000002 | Val MSE: 0.000107 | PSNR: 41.58 dB | SSIM: 0.9241 | G_LR: 7.23e-05 | D_LR: 4.34e-06
+2026-01-26 15:22:23,539 - INFO - Saved checkpoint for epoch 79
+2026-01-26 15:22:23,721 - INFO - New best model (SSIM: 0.9241)
+2026-01-26 15:22:23,740 - INFO - Epoch 079 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000002 | Val MSE: 0.000107 | PSNR: 41.59 dB | SSIM: 0.9241 | G_LR: 7.16e-05 | D_LR: 4.30e-06
+2026-01-26 15:30:07,374 - INFO - Saved checkpoint for epoch 80
+2026-01-26 15:30:07,525 - INFO - New best model (SSIM: 0.9243)
+2026-01-26 15:30:07,539 - INFO - Epoch 080 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000002 | Val MSE: 0.000107 | PSNR: 41.59 dB | SSIM: 0.9243 | G_LR: 7.08e-05 | D_LR: 4.25e-06
+2026-01-26 15:38:09,012 - INFO - Saved checkpoint for epoch 81
+2026-01-26 15:38:09,217 - INFO - New best model (SSIM: 0.9245)
+2026-01-26 15:38:09,238 - INFO - Epoch 081 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000002 | Val MSE: 0.000106 | PSNR: 41.60 dB | SSIM: 0.9245 | G_LR: 7.01e-05 | D_LR: 4.21e-06
+2026-01-26 15:46:02,717 - INFO - Saved checkpoint for epoch 82
+2026-01-26 15:46:03,242 - INFO - New best model (SSIM: 0.9245)
+2026-01-26 15:46:03,263 - INFO - Epoch 082 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000002 | Val MSE: 0.000106 | PSNR: 41.60 dB | SSIM: 0.9245 | G_LR: 6.93e-05 | D_LR: 4.16e-06
+2026-01-26 15:53:48,381 - INFO - Saved checkpoint for epoch 83
+2026-01-26 15:53:48,566 - INFO - New best model (SSIM: 0.9245)
+2026-01-26 15:53:48,594 - INFO - Epoch 083 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000002 | Val MSE: 0.000107 | PSNR: 41.60 dB | SSIM: 0.9245 | G_LR: 6.85e-05 | D_LR: 4.11e-06
+2026-01-26 16:02:28,134 - INFO - Saved checkpoint for epoch 84
+2026-01-26 16:02:28,235 - INFO - Epoch 084 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000002 | Val MSE: 0.000107 | PSNR: 41.59 dB | SSIM: 0.9244 | G_LR: 6.78e-05 | D_LR: 4.07e-06
+2026-01-26 16:10:20,791 - INFO - Saved checkpoint for epoch 85
+2026-01-26 16:10:20,949 - INFO - New best model (SSIM: 0.9245)
+2026-01-26 16:10:20,974 - INFO - Epoch 085 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000002 | Val MSE: 0.000107 | PSNR: 41.60 dB | SSIM: 0.9245 | G_LR: 6.70e-05 | D_LR: 4.02e-06
+2026-01-26 16:16:52,956 - INFO - Saved checkpoint for epoch 86
+2026-01-26 16:16:53,108 - INFO - New best model (SSIM: 0.9246)
+2026-01-26 16:16:53,108 - INFO - Epoch 086 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000003 | Val MSE: 0.000107 | PSNR: 41.59 dB | SSIM: 0.9246 | G_LR: 6.62e-05 | D_LR: 3.97e-06
+2026-01-26 16:23:21,992 - INFO - Saved checkpoint for epoch 87
+2026-01-26 16:23:22,162 - INFO - New best model (SSIM: 0.9246)
+2026-01-26 16:23:22,162 - INFO - Epoch 087 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000003 | Val MSE: 0.000106 | PSNR: 41.60 dB | SSIM: 0.9246 | G_LR: 6.54e-05 | D_LR: 3.93e-06
+2026-01-26 16:29:53,317 - INFO - Saved checkpoint for epoch 88
+2026-01-26 16:29:53,404 - INFO - Epoch 088 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000003 | Val MSE: 0.000107 | PSNR: 41.59 dB | SSIM: 0.9246 | G_LR: 6.46e-05 | D_LR: 3.88e-06
+2026-01-26 16:38:27,682 - INFO - Saved checkpoint for epoch 89
+2026-01-26 16:38:27,792 - INFO - Epoch 089 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000003 | Val MSE: 0.000107 | PSNR: 41.59 dB | SSIM: 0.9245 | G_LR: 6.38e-05 | D_LR: 3.83e-06
+2026-01-26 16:47:29,251 - INFO - Saved checkpoint for epoch 90
+2026-01-26 16:47:29,414 - INFO - Epoch 090 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000003 | Val MSE: 0.000107 | PSNR: 41.59 dB | SSIM: 0.9245 | G_LR: 6.30e-05 | D_LR: 3.78e-06
+2026-01-26 16:55:22,709 - INFO - Saved checkpoint for epoch 91
+2026-01-26 16:55:22,939 - INFO - New best model (SSIM: 0.9246)
+2026-01-26 16:55:22,965 - INFO - Epoch 091 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000003 | Val MSE: 0.000107 | PSNR: 41.59 dB | SSIM: 0.9246 | G_LR: 6.22e-05 | D_LR: 3.74e-06
+2026-01-26 17:03:52,977 - INFO - Saved checkpoint for epoch 92
+2026-01-26 17:03:53,142 - INFO - New best model (SSIM: 0.9247)
+2026-01-26 17:03:53,173 - INFO - Epoch 092 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000003 | Val MSE: 0.000107 | PSNR: 41.59 dB | SSIM: 0.9247 | G_LR: 6.14e-05 | D_LR: 3.69e-06
+2026-01-26 17:13:26,914 - INFO - Saved checkpoint for epoch 93
+2026-01-26 17:13:27,071 - INFO - New best model (SSIM: 0.9247)
+2026-01-26 17:13:27,093 - INFO - Epoch 093 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000003 | Val MSE: 0.000107 | PSNR: 41.59 dB | SSIM: 0.9247 | G_LR: 6.06e-05 | D_LR: 3.64e-06
+2026-01-26 17:22:59,519 - INFO - Saved checkpoint for epoch 94
+2026-01-26 17:22:59,752 - INFO - New best model (SSIM: 0.9247)
+2026-01-26 17:22:59,773 - INFO - Epoch 094 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000004 | Val MSE: 0.000107 | PSNR: 41.58 dB | SSIM: 0.9247 | G_LR: 5.98e-05 | D_LR: 3.59e-06
+2026-01-26 17:31:45,185 - INFO - Saved checkpoint for epoch 95
+2026-01-26 17:31:45,295 - INFO - Epoch 095 | G Loss: 0.0001 | D Loss: 0.0000 | lambda_adv: 0.000004 | Val MSE: 0.000107 | PSNR: 41.58 dB | SSIM: 0.9246 | G_LR: 5.90e-05 | D_LR: 3.54e-06
