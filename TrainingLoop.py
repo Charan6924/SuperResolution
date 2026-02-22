@@ -29,7 +29,8 @@ def log_images(generator, val_loader, run, epoch, num_samples=4):
     lr = lr[:num_samples].to(device)
     hr = hr[:num_samples].to(device)
 
-    sr = generator(lr)
+    with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+        sr = generator(lr)
     lr_upscaled = torch.nn.functional.interpolate(lr, size=(125, 125), mode='nearest')
 
     images = []
@@ -51,7 +52,8 @@ def validate(generator, val_loader):
 
     for lr, hr in val_loader:
         lr, hr = lr.to(device), hr.to(device)
-        fake_hr = generator(lr)
+        with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+            fake_hr = generator(lr)
         total_psnr += psnr(fake_hr, hr).item()
         total_ssim += ssim(fake_hr, hr).item()
         total_mse += pixel_criterion(fake_hr, hr).item()
@@ -78,8 +80,9 @@ def pretrain_generator(num_epochs, generator, optimizer, train_loader, val_loade
             lr, hr = lr.to(device), hr.to(device)
 
             optimizer.zero_grad()
-            sr = generator(lr)
-            loss = pixel_loss_fn(sr, hr)
+            with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+                sr = generator(lr)
+                loss = pixel_loss_fn(sr, hr)
             loss.backward()
 
             grad_norm = compute_grad_norm(generator)
@@ -145,28 +148,32 @@ def train_gan(num_epochs, generator, discriminator, opt_G, opt_D,
         for lr, hr in pbar:
             lr, hr = lr.to(device), hr.to(device)
 
+            # === Train Discriminator ===
             opt_D.zero_grad()
             with torch.no_grad():
-                fake_hr = generator(lr)
+                with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+                    fake_hr = generator(lr)
 
-            real_logits = discriminator(hr)
-            fake_logits = discriminator(fake_hr)
-            d_loss = criterion.discriminator_loss(real_logits, fake_logits)
+            with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+                real_logits = discriminator(hr)
+                fake_logits = discriminator(fake_hr)
+                d_loss = criterion.discriminator_loss(real_logits, fake_logits)
 
             d_loss.backward()
             d_grad = compute_grad_norm(discriminator)
             opt_D.step()
+
+            # === Train Generator ===
             opt_G.zero_grad()
-
-            fake_hr = generator(lr)
-            fake_logits_g = discriminator(fake_hr)
-
-            g_adv = criterion.generator_loss(real_logits.detach(), fake_logits_g)
-            g_pix = pixel_loss_fn(fake_hr, hr)
-            g_loss = g_adv + pixel_weight * g_pix
+            with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+                fake_hr = generator(lr)
+                fake_logits_g = discriminator(fake_hr)
+                g_adv = criterion.generator_loss(real_logits.detach(), fake_logits_g)
+                g_pix = pixel_loss_fn(fake_hr, hr)
+                g_loss = g_adv + pixel_weight * g_pix
 
             g_loss.backward()
-            torch.nn.utils.clip_grad_norm_(generator.parameters(), max_norm=10.0)  # Prevent explosion
+            torch.nn.utils.clip_grad_norm_(generator.parameters(), max_norm=10.0)
             g_grad = compute_grad_norm(generator)
             opt_G.step()
             stats['d_loss'] += d_loss.item()
