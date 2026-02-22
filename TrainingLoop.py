@@ -104,6 +104,13 @@ def pretrain_generator(num_epochs, generator, optimizer_G, train_loader, val_loa
     }, f'{checkpoint_dir}/pretrain_final.pt')
     print(f"Pretrain checkpoint saved to {checkpoint_dir}/pretrain_final.pt")
 
+def compute_grad_norm(model):
+    total_norm = 0.0
+    for p in model.parameters():
+        if p.grad is not None:
+            total_norm += p.grad.data.norm(2).item() ** 2
+    return total_norm ** 0.5
+
 def train(num_epochs, generator, discriminator, optimizer_D, optimizer_G,
           train_loader, val_loader, criterion, run, scheduler_G, scheduler_D, log_images_every=10):
     print('Starting GAN training loop...')
@@ -114,6 +121,8 @@ def train(num_epochs, generator, discriminator, optimizer_D, optimizer_G,
 
     for epoch in epoch_bar:
         total_d_loss = total_g_loss = total_g_adv_loss = total_g_pixel_loss = 0.0
+        total_g_grad_norm = total_d_grad_norm = 0.0
+        total_real_logits = total_fake_logits = 0.0
         num_batches = 0
         pixel_weight = max(0.1, 1.0 - epoch * (0.9 / num_epochs))
 
@@ -123,17 +132,15 @@ def train(num_epochs, generator, discriminator, optimizer_D, optimizer_G,
             lr = lr.to(device)
             hr = hr.to(device)
 
-            with torch.no_grad():
-                fake_hr = generator(lr)
+            optimizer_D.zero_grad()
             with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+                fake_hr = generator(lr).detach() 
                 real_logits = discriminator(hr)
                 fake_logits = discriminator(fake_hr)
                 d_loss = criterion.discriminator_loss(real_logits, fake_logits)
-
-            if epoch % 5 == 0:
-                optimizer_D.zero_grad()
-                d_loss.backward()
-                optimizer_D.step()
+            d_loss.backward()
+            d_grad_norm = compute_grad_norm(discriminator)
+            optimizer_D.step()
 
             optimizer_G.zero_grad()
             with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
@@ -144,14 +151,38 @@ def train(num_epochs, generator, discriminator, optimizer_D, optimizer_G,
                 g_pixel_loss = pixel_criterion(fake_hr_g, hr)
                 g_loss = g_adv_loss + g_pixel_loss * pixel_weight
             g_loss.backward()
+            g_grad_norm = compute_grad_norm(generator)
             optimizer_G.step()
 
+            # === TRACKING ===
             total_d_loss += d_loss.item()
             total_g_loss += g_loss.item()
             total_g_adv_loss += g_adv_loss.item()
             total_g_pixel_loss += g_pixel_loss.item()
+            total_g_grad_norm += g_grad_norm
+            total_d_grad_norm += d_grad_norm
+            total_real_logits += real_logits.mean().item()
+            total_fake_logits += fake_logits.mean().item()
             num_batches += 1
-            batch_bar.set_postfix({'D': f'{d_loss.item():.4f}', 'G': f'{g_loss.item():.4f}'})
+
+            if num_batches == 1 and epoch == 0:
+                print(f"\n{'='*60}")
+                print(f"DEBUG FIRST BATCH:")
+                print(f"  D grad norm: {d_grad_norm:.6f}")
+                print(f"  G grad norm: {g_grad_norm:.6f}")
+                print(f"  Real logits mean: {real_logits.mean().item():.4f}")
+                print(f"  Fake logits mean: {fake_logits.mean().item():.4f}")
+                print(f"  g_pixel_loss: {g_pixel_loss.item():.6f}")
+                print(f"  g_adv_loss: {g_adv_loss.item():.6f}")
+                print(f"  SR output range: [{fake_hr_g.min().item():.4f}, {fake_hr_g.max().item():.4f}]")
+                print(f"{'='*60}\n")
+
+            batch_bar.set_postfix({
+                'D': f'{d_loss.item():.4f}',
+                'G': f'{g_loss.item():.4f}',
+                'Dg': f'{d_grad_norm:.2f}',
+                'Gg': f'{g_grad_norm:.2f}'
+            })
 
         scheduler_G.step()
         scheduler_D.step()
@@ -160,6 +191,14 @@ def train(num_epochs, generator, discriminator, optimizer_D, optimizer_G,
         avg_g_loss = total_g_loss / num_batches
         avg_g_adv_loss = total_g_adv_loss / num_batches
         avg_g_pixel_loss = total_g_pixel_loss / num_batches
+        avg_g_grad_norm = total_g_grad_norm / num_batches
+        avg_d_grad_norm = total_d_grad_norm / num_batches
+        avg_real_logits = total_real_logits / num_batches
+        avg_fake_logits = total_fake_logits / num_batches
+
+        print(f"Epoch {epoch+1}: D_loss={avg_d_loss:.4f}, G_loss={avg_g_loss:.4f}, "
+              f"D_grad={avg_d_grad_norm:.4f}, G_grad={avg_g_grad_norm:.4f}, "
+              f"Real={avg_real_logits:.4f}, Fake={avg_fake_logits:.4f}")
 
         avg_psnr, avg_ssim, avg_mse = validate(generator, val_loader)
         run.log({
@@ -169,6 +208,10 @@ def train(num_epochs, generator, discriminator, optimizer_D, optimizer_G,
             'train/g_pixel_loss': avg_g_pixel_loss,
             'train/pixel_weight': pixel_weight,
             'train/lr_G': scheduler_G.get_last_lr()[0],
+            'debug/g_grad_norm': avg_g_grad_norm,
+            'debug/d_grad_norm': avg_d_grad_norm,
+            'debug/real_logits_mean': avg_real_logits,
+            'debug/fake_logits_mean': avg_fake_logits,
             'train/lr_D': scheduler_D.get_last_lr()[0],
             'val/psnr': avg_psnr,
             'val/ssim': avg_ssim,
@@ -244,7 +287,7 @@ if __name__ == "__main__":
     pretrain_ckpt = torch.load(f'{checkpoint_dir}/pretrain_final.pt', map_location=device)
     generator.load_state_dict(pretrain_ckpt['generator'])
     print(f"Loaded pretrained generator from {checkpoint_dir}/pretrain_final.pt")
-    generator = torch.compile(generator)
+    generator = torch.compile(generator)  
     for pg in optimizer_G.param_groups:
         pg['lr'] = 1e-4
     lr_scheduler_G = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_G, T_max=num_epochs)

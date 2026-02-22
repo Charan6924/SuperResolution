@@ -3,9 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 def spectral_conv(in_ch, out_ch, kernel_size, stride=1, padding=0):
-    return nn.utils.spectral_norm(
-        nn.Conv2d(in_ch, out_ch, kernel_size, stride=stride, padding=padding, bias=False)
-    )
+    return nn.Conv2d(in_ch, out_ch, kernel_size, stride=stride, padding=padding, bias=True)
 
 class DiscBlock(nn.Module):
     def __init__(self, in_channels,out_channels, stride = 1):
@@ -45,8 +43,10 @@ class Discriminator(nn.Module):
 
     def _init_weights(self):
         for m in self.modules():
-            if isinstance(m,nn.Conv2d):
+            if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, a=0.2, nonlinearity='leaky_relu')
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
     def forward(self,x):
         x = self.backbone(x)
