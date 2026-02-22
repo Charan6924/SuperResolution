@@ -170,7 +170,8 @@ def train_gan(num_epochs, generator, discriminator, opt_G, opt_D,
                 fake_logits_g = discriminator(fake_hr)
                 g_adv = criterion.generator_loss(real_logits.detach(), fake_logits_g)
                 g_pix = pixel_loss_fn(fake_hr, hr)
-                g_loss = g_adv + pixel_weight * g_pix
+                # Standard ESRGAN: adv_weight=0.001, pixel stays dominant
+                g_loss = 0.001 * g_adv + g_pix
 
             g_loss.backward()
             torch.nn.utils.clip_grad_norm_(generator.parameters(), max_norm=10.0)
