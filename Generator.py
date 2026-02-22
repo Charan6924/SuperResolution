@@ -23,7 +23,7 @@ class Generator(nn.Module):
             nn.Conv2d(num_features, num_features // 2, kernel_size=3, padding=1),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(num_features // 2, out_channels, kernel_size=3, padding=1),
-            nn.Sigmoid()
+            # No sigmoid - clamp in forward() to avoid gradient saturation
         )
         self._init_weights()
 
@@ -34,8 +34,9 @@ class Generator(nn.Module):
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
 
-        final_conv = self.tail[-2]  
-        nn.init.xavier_uniform_(final_conv.weight, gain=0.1)
+        # Initialize final conv with small weights to start near 0
+        final_conv = self.tail[-1]  # Last layer is now the conv
+        nn.init.normal_(final_conv.weight, mean=0, std=0.01)
         nn.init.zeros_(final_conv.bias)
 
     def forward(self, x):
@@ -43,10 +44,11 @@ class Generator(nn.Module):
         feat = x
         x = self.body(x)
         x = self.body_tail(x) + feat
-        x = self.upsample(x) 
+        x = self.upsample(x)
         x = self.upsample_refine(x)
         x = self.tail(x)
-        x = x[:, :, :125, :125]     
+        x = torch.clamp(x, 0, 1)  # Clamp instead of sigmoid - gradients flow freely
+        x = x[:, :, :125, :125]
         return x
 
 
