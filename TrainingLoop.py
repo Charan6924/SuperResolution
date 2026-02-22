@@ -166,6 +166,7 @@ def train_gan(num_epochs, generator, discriminator, opt_G, opt_D,
             g_loss = g_adv + pixel_weight * g_pix
 
             g_loss.backward()
+            torch.nn.utils.clip_grad_norm_(generator.parameters(), max_norm=10.0)  # Prevent explosion
             g_grad = compute_grad_norm(generator)
             opt_G.step()
             stats['d_loss'] += d_loss.item()
@@ -248,7 +249,7 @@ if __name__ == "__main__":
     GAN_EPOCHS = 200
     BATCH_SIZE = 256
     LR_G = 1e-4
-    LR_D = 1e-4  # Same as G now
+    LR_D = 1e-5  # Lower than G to prevent D from dominating
 
     tensor_dir = 'data/pt_tensors'
     hr_max = torch.load(f'{tensor_dir}/normalization_stats.pt')['hr_p995']
@@ -276,8 +277,15 @@ if __name__ == "__main__":
         },
     )
 
-    opt_G = torch.optim.AdamW(generator.parameters(), lr=LR_G, betas=(0.9, 0.999))
-    pretrain_generator(PRETRAIN_EPOCHS, generator, opt_G, train_loader, val_loader, run)
+    # Load pretrained generator (skip pretraining if checkpoint exists)
+    pretrain_path = f'{checkpoint_dir}/pretrain_final.pt'
+    if os.path.exists(pretrain_path):
+        print(f"Loading pretrained generator from {pretrain_path}")
+        ckpt = torch.load(pretrain_path, map_location=device)
+        generator.load_state_dict(ckpt['generator'])
+    else:
+        opt_G = torch.optim.AdamW(generator.parameters(), lr=LR_G, betas=(0.9, 0.999))
+        pretrain_generator(PRETRAIN_EPOCHS, generator, opt_G, train_loader, val_loader, run)
 
     opt_G = torch.optim.AdamW(generator.parameters(), lr=LR_G, betas=(0.9, 0.999))
     opt_D = torch.optim.AdamW(discriminator.parameters(), lr=LR_D, betas=(0.9, 0.999))
