@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from Generator import Generator
@@ -15,6 +14,29 @@ pixel_criterion = nn.L1Loss()
 pretrain_pixel_loss = nn.L1Loss()
 checkpoint_dir = 'checkpoints'
 os.makedirs(checkpoint_dir, exist_ok=True)
+
+@torch.no_grad()
+def log_images(generator, val_loader, run, epoch, num_samples=4):
+    generator.eval()
+    lr, hr = next(iter(val_loader))
+    lr = lr[:num_samples].to(device)
+    hr = hr[:num_samples].to(device)
+
+    with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+        sr = generator(lr)
+
+    images = []
+    for i in range(num_samples):
+        lr_img = lr[i].cpu().float()
+        sr_img = sr[i].cpu().float()
+        hr_img = hr[i].cpu().float()
+
+        images.append(wandb.Image(lr_img, caption=f"LR_{i}"))
+        images.append(wandb.Image(sr_img, caption=f"SR_{i}"))
+        images.append(wandb.Image(hr_img, caption=f"HR_{i}"))
+
+    run.log({f"samples/epoch_{epoch}": images})
+    generator.train()
 
 @torch.no_grad()
 def validate(generator, val_loader):
@@ -45,7 +67,8 @@ def pretrain_generator(num_epochs, generator, optimizer_G, train_loader, val_loa
     epoch_bar = tqdm(range(num_epochs), desc='Pretrain Epochs', position=0)
 
     for epoch in epoch_bar:
-        g_loss_val = 0.0
+        total_g_loss = 0.0
+        num_batches = 0
         batch_bar = tqdm(train_loader, desc=f'Pretrain Epoch {epoch+1}/{num_epochs}', position=1, leave=False)
 
         for lr, hr in batch_bar:
@@ -59,11 +82,17 @@ def pretrain_generator(num_epochs, generator, optimizer_G, train_loader, val_loa
             g_loss.backward()
             optimizer_G.step()
 
-            g_loss_val = g_loss.item()
-            batch_bar.set_postfix({'G': f'{g_loss_val:.6f}'})
+            total_g_loss += g_loss.item()
+            num_batches += 1
+            batch_bar.set_postfix({'G': f'{g_loss.item():.6f}'})
 
+        avg_g_loss = total_g_loss / num_batches
         scheduler.step()
-        run.log({'pretrain/g_loss': g_loss_val, 'pretrain/epoch': epoch + 1})
+        run.log({
+            'pretrain/g_loss': avg_g_loss,
+            'pretrain/lr': scheduler.get_last_lr()[0],
+            'pretrain/epoch': epoch + 1,
+        })
 
     avg_psnr, avg_ssim, avg_mse = validate(generator, val_loader)
     run.log({'pretrain/val_psnr': avg_psnr, 'pretrain/val_ssim': avg_ssim, 'pretrain/val_mse': avg_mse})
@@ -75,7 +104,7 @@ def pretrain_generator(num_epochs, generator, optimizer_G, train_loader, val_loa
     print(f"Pretrain checkpoint saved to {checkpoint_dir}/pretrain_final.pt")
 
 def train(num_epochs, generator, discriminator, optimizer_D, optimizer_G,
-          train_loader, val_loader, criterion, run, scheduler_G, scheduler_D):
+          train_loader, val_loader, criterion, run, scheduler_G, scheduler_D, log_images_every=10):
     print('Starting GAN training loop...')
     epoch_bar = tqdm(range(num_epochs), desc='Epochs', position=0)
     max_ssim  = 0.0
@@ -83,7 +112,8 @@ def train(num_epochs, generator, discriminator, optimizer_D, optimizer_G,
     discriminator.train()
 
     for epoch in epoch_bar:
-        d_loss_val = g_loss_val = 0.0
+        total_d_loss = total_g_loss = total_g_adv_loss = total_g_pixel_loss = 0.0
+        num_batches = 0
         pixel_weight = max(0.1, 1.0 - epoch * (0.9 / num_epochs))
 
         batch_bar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs}', position=1, leave=False)
@@ -109,28 +139,44 @@ def train(num_epochs, generator, discriminator, optimizer_D, optimizer_G,
                 fake_hr_g = generator(lr)
                 fake_logits_g = discriminator(fake_hr_g)
                 real_logits_g = real_logits.detach()
-                g_loss  = criterion.generator_loss(real_logits_g, fake_logits_g)
-                g_loss += pixel_criterion(fake_hr_g, hr) * pixel_weight
+                g_adv_loss = criterion.generator_loss(real_logits_g, fake_logits_g)
+                g_pixel_loss = pixel_criterion(fake_hr_g, hr)
+                g_loss = g_adv_loss + g_pixel_loss * pixel_weight
             g_loss.backward()
             optimizer_G.step()
 
-            d_loss_val = d_loss.item()
-            g_loss_val = g_loss.item()
-            batch_bar.set_postfix({'D': f'{d_loss_val:.4f}', 'G': f'{g_loss_val:.4f}'})
+            total_d_loss += d_loss.item()
+            total_g_loss += g_loss.item()
+            total_g_adv_loss += g_adv_loss.item()
+            total_g_pixel_loss += g_pixel_loss.item()
+            num_batches += 1
+            batch_bar.set_postfix({'D': f'{d_loss.item():.4f}', 'G': f'{g_loss.item():.4f}'})
 
         scheduler_G.step()
         scheduler_D.step()
 
+        avg_d_loss = total_d_loss / num_batches
+        avg_g_loss = total_g_loss / num_batches
+        avg_g_adv_loss = total_g_adv_loss / num_batches
+        avg_g_pixel_loss = total_g_pixel_loss / num_batches
+
         avg_psnr, avg_ssim, avg_mse = validate(generator, val_loader)
         run.log({
-            'train/d_loss':  d_loss_val,
-            'train/g_loss':  g_loss_val,
+            'train/d_loss': avg_d_loss,
+            'train/g_loss': avg_g_loss,
+            'train/g_adv_loss': avg_g_adv_loss,
+            'train/g_pixel_loss': avg_g_pixel_loss,
             'train/pixel_weight': pixel_weight,
-            'val/psnr':      avg_psnr,
-            'val/ssim':      avg_ssim,
-            'val/mse':       avg_mse,
-            'epoch':         epoch + 1,
+            'train/lr_G': scheduler_G.get_last_lr()[0],
+            'train/lr_D': scheduler_D.get_last_lr()[0],
+            'val/psnr': avg_psnr,
+            'val/ssim': avg_ssim,
+            'val/mse': avg_mse,
+            'epoch': epoch + 1,
         })
+
+        if (epoch + 1) % log_images_every == 0 or epoch == 0:
+            log_images(generator, val_loader, run, epoch + 1)
 
         if avg_ssim > max_ssim:
             max_ssim = avg_ssim
@@ -163,11 +209,33 @@ if __name__ == "__main__":
         entity="charanvardham",
         project="Super Resolution",
         config={
-            "learning_rate": 1e-4,
-            "architecture":  "ESRGAN",
-            "epochs":        num_epochs,
-            "batch_size":    256,
-            "betas":         (0.9, 0.999),
+            "architecture": "ESRGAN",
+            "epochs": num_epochs,
+            "pretrain_epochs": pretrain_epochs,
+            "batch_size": 256,
+            "generator_lr": 1e-4,
+            "discriminator_lr": 1e-5,
+            "betas": (0.9, 0.999),
+            "optimizer": "AdamW",
+            "scheduler": "CosineAnnealingLR",
+            "pixel_weight_start": 1.0,
+            "pixel_weight_end": 0.1,
+            "discriminator_update_freq": "every_2_epochs",
+            "generator": {
+                "num_features": 64,
+                "growth_channels": 32,
+                "num_blocks": 8,
+                "residual_scale": 0.2,
+            },
+            "discriminator": {
+                "base_features": 64,
+            },
+            "dataset": {
+                "train_ratio": 0.8,
+                "val_ratio": 0.1,
+                "hr_max": hr_max,
+                "num_workers": 3,
+            },
         },
     )
 
