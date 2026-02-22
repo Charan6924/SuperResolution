@@ -34,6 +34,10 @@ class Generator(nn.Module):
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
 
+        final_conv = self.tail[-2]  # Conv before Sigmoid
+        nn.init.xavier_uniform_(final_conv.weight, gain=0.1)
+        nn.init.zeros_(final_conv.bias)
+
     def forward(self, x):
         x = self.head(x)
         feat = x
