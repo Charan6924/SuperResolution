@@ -62,8 +62,11 @@ class RelativisticAverageLoss(nn.Module):
         real_vs_fake = real_logits - fake_logits.mean()
         fake_vs_real = fake_logits - real_logits.mean()
 
-        loss_real = self.bce(real_vs_fake, torch.ones_like(real_vs_fake))
-        loss_fake = self.bce(fake_vs_real, torch.zeros_like(fake_vs_real))
+        real_label = 0.9 * torch.ones_like(real_vs_fake)
+        fake_label = 0.1 * torch.ones_like(fake_vs_real)
+
+        loss_real = self.bce(real_vs_fake, real_label)
+        loss_fake = self.bce(fake_vs_real, fake_label)
         return (loss_real + loss_fake) / 2
 
     def generator_loss(self, real_logits, fake_logits):

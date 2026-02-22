@@ -24,10 +24,11 @@ def log_images(generator, val_loader, run, epoch, num_samples=4):
 
     with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
         sr = generator(lr)
+    lr_upscaled = torch.nn.functional.interpolate(lr, size=(125, 125), mode='nearest')
 
     images = []
     for i in range(num_samples):
-        lr_img = lr[i].cpu().float()
+        lr_img = lr_upscaled[i].cpu().float()
         sr_img = sr[i].cpu().float()
         hr_img = hr[i].cpu().float()
 
@@ -129,7 +130,7 @@ def train(num_epochs, generator, discriminator, optimizer_D, optimizer_G,
                 fake_logits = discriminator(fake_hr)
                 d_loss = criterion.discriminator_loss(real_logits, fake_logits)
 
-            if epoch % 2 == 0:
+            if epoch % 5 == 0:
                 optimizer_D.zero_grad()
                 d_loss.backward()
                 optimizer_D.step()
@@ -199,7 +200,7 @@ if __name__ == "__main__":
     generator = Generator().to(device)
     discriminator = Discriminator().to(device)
     optimizer_G = torch.optim.AdamW(generator.parameters(),     lr=1e-4, betas=(0.9, 0.999))
-    optimizer_D = torch.optim.AdamW(discriminator.parameters(), lr=1e-5, betas=(0.9, 0.999))
+    optimizer_D = torch.optim.AdamW(discriminator.parameters(), lr=1e-6, betas=(0.9, 0.999))  # Reduced from 1e-5
 
     pretrain_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_G, T_max=pretrain_epochs)
     criterion = RelativisticAverageLoss()
@@ -239,7 +240,10 @@ if __name__ == "__main__":
         },
     )
 
-    pretrain_generator(num_epochs=pretrain_epochs,generator=generator,optimizer_G=optimizer_G,train_loader=train_loader,val_loader=val_loader,run=run,scheduler=pretrain_scheduler,)
+    # Load pretrained checkpoint instead of retraining
+    pretrain_ckpt = torch.load(f'{checkpoint_dir}/pretrain_final.pt', map_location=device)
+    generator.load_state_dict(pretrain_ckpt['generator'])
+    print(f"Loaded pretrained generator from {checkpoint_dir}/pretrain_final.pt")
     generator = torch.compile(generator)
     for pg in optimizer_G.param_groups:
         pg['lr'] = 1e-4
