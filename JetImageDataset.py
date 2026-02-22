@@ -10,9 +10,10 @@ class JetImageDataset(IterableDataset):
         tensor_dir,
         split="train",
         train_ratio=0.8,
+        val_ratio=0.1,
         normalize=True,
         seed=42,
-        hr_max=None,     
+        hr_max=None,
     ):
         super().__init__()
         all_files = sorted(glob.glob(os.path.join(tensor_dir, "*.pt")))
@@ -21,17 +22,22 @@ class JetImageDataset(IterableDataset):
         if not all_files:
             raise ValueError(f"No .pt files found in {tensor_dir}")
 
-        n_train = int(len(all_files) * train_ratio)
+        n = len(all_files)
+        n_train = int(n * train_ratio)
+        n_val   = int(n * val_ratio)
+        
         if split == "train":
             self.tensor_files = all_files[:n_train]
         elif split == "val":
-            self.tensor_files = all_files[n_train:]
+            self.tensor_files = all_files[n_train:n_train + n_val]
+        elif split == "test":
+            self.tensor_files = all_files[n_train + n_val:]
         else:
-            raise ValueError(f"split must be 'train' or 'val', got '{split}'")
+            raise ValueError(f"split must be 'train', 'val', or 'test', got '{split}'")
 
-        self.split      = split
-        self.normalize  = normalize
-        self.seed       = seed
+        self.split     = split
+        self.normalize = normalize
+        self.seed      = seed
 
         if normalize:
             if hr_max is None:
@@ -39,14 +45,19 @@ class JetImageDataset(IterableDataset):
                     "normalize=True requires hr_max. "
                     "Run calculate_and_save_normalization_stats() and pass stats['hr_p995']."
                 )
-            
             self.hr_max = hr_max
         else:
             self.hr_max = None
 
+        end_idx = (n_train if split == "train"
+                   else n_train + n_val if split == "val"
+                   else n)
+        start_idx = (0 if split == "train"
+                     else n_train if split == "val"
+                     else n_train + n_val)
+
         print(f"[{split}] {len(self.tensor_files)} files "
-              f"(files {0 if split == 'train' else n_train}–"
-              f"{n_train if split == 'train' else len(all_files)})")
+              f"(files {start_idx}–{end_idx})")
 
     def _get_worker_files(self):
         worker = get_worker_info()
@@ -63,17 +74,16 @@ class JetImageDataset(IterableDataset):
         for file_path in self._get_worker_files():
             try:
                 data = torch.load(file_path, map_location='cpu')
-                lr   = data['lr'].float()   # (N, 3, 64, 64)
-                hr   = data['hr'].float()   # (N, 3, 125, 125)
-
+                lr   = data['lr'].float()
+                hr   = data['hr'].float()
             except Exception as e:
                 print(f"Error loading {file_path}: {e}")
                 continue
-            
+
             if self.normalize:
-                lr = torch.clamp(lr, min=0.0) / self.hr_max
-                hr = torch.clamp(hr, min=0.0) / self.hr_max
-                lr = torch.clamp(lr, 0.0, 1.0)
+                lr = torch.clamp(lr, min=0.0) / self.hr_max #type: ignore
+                hr = torch.clamp(hr, min=0.0) / self.hr_max #type: ignore
+                lr = torch.clamp(lr, 0.0, 1.0) 
                 hr = torch.clamp(hr, 0.0, 1.0)
 
             n = lr.size(0)
@@ -146,34 +156,3 @@ def calculate_and_save_normalization_stats(tensor_dir):
     print(f"hr_p995 = {stats['hr_p995']:.6f}")
     return stats
 
-if __name__ == "__main__":
-    from torch.utils.data import DataLoader
-
-    tensor_dir = "data/pt_tensors"
-
-    stats = calculate_and_save_normalization_stats(tensor_dir)
-    hr_max = stats['hr_p995'] 
-
-    train_dataset = JetImageDataset(
-        tensor_dir=tensor_dir,
-        split="train",
-        train_ratio=0.8,
-        hr_max=hr_max,
-    )
-
-    val_dataset = JetImageDataset(
-        tensor_dir=tensor_dir,
-        split="val",
-        train_ratio=0.8,
-        hr_max=hr_max,
-    )
-    train_loader = DataLoader(train_dataset, batch_size=32, num_workers=4)
-    val_loader   = DataLoader(val_dataset,   batch_size=32, num_workers=4)
-
-    print("\nTesting data loading:")
-    for lr_batch, hr_batch, in train_loader:
-        print(f"LR batch shape:    {lr_batch.shape}")     # (32, 3, 64, 64)
-        print(f"HR batch shape:    {hr_batch.shape}")     # (32, 3, 125, 125)
-        print(f"LR range: [{lr_batch.min():.4f}, {lr_batch.max():.4f}]")
-        print(f"HR range: [{hr_batch.min():.4f}, {hr_batch.max():.4f}]")       
-        break

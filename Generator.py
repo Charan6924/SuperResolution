@@ -2,25 +2,29 @@ import torch
 import torch.nn as nn
 
 class Generator(nn.Module):
-    def __init__(self,in_channels = 3,out_channels = 3, num_features = 64, growth_channels = 32, num_blocks = 8, num_class = 2, residual_scale = 0.2):
+    def __init__(self, in_channels=3, out_channels=3, num_features=64, growth_channels=32, num_blocks=8, num_class=2, residual_scale=0.2):
         super(Generator, self).__init__()
         self.residual_scale = residual_scale
-        self.head = nn.Conv1d(in_channels, num_features, kernel_size=3, padding=1)
-        self.body = nn.Sequential(*[RRDB(num_features, growth_channels, residual_scale)] for _ in range(num_blocks))
+        self.head = nn.Conv2d(in_channels, num_features, kernel_size=3, padding=1)
+        self.body = nn.Sequential(*[RRDB(num_features, growth_channels, residual_scale) for _ in range(num_blocks)])
         self.body_tail = nn.Conv2d(num_features, num_features, kernel_size=3, padding=1)
-        self.upsample_refine = nn.Sequential(
-            nn.Conv2d(num_features,num_features,kernel_size=3,padding=1),
+        self.upsample = nn.Sequential(
+            nn.Conv2d(num_features, num_features * 4, kernel_size=3, padding=1),
+            nn.PixelShuffle(2), 
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(num_features,num_features,kernel_size=3,padding=1),
+        )
+        self.upsample_refine = nn.Sequential(
+            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
             nn.LeakyReLU(0.2, inplace=True),
         )
         self.tail = nn.Sequential(
-            nn.Conv2d(num_features,num_features//2,kernel_size=3,padding=1),
+            nn.Conv2d(num_features, num_features // 2, kernel_size=3, padding=1),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(num_features//2,out_channels,kernel_size=3,padding=1),
+            nn.Conv2d(num_features // 2, out_channels, kernel_size=3, padding=1),
             nn.Sigmoid()
         )
-
         self._init_weights()
 
     def _init_weights(self):
@@ -35,10 +39,13 @@ class Generator(nn.Module):
         feat = x
         x = self.body(x)
         x = self.body_tail(x) + feat
+        x = self.upsample(x) 
         x = self.upsample_refine(x)
         x = self.tail(x)
+        x = x[:, :, :125, :125]     
         return x
-    
+
+
 class RRDB(nn.Module):
     def __init__(self, num_features=64, growth_channels=32, residual_scale=0.2):
         super().__init__()
@@ -52,6 +59,7 @@ class RRDB(nn.Module):
         out = self.rdb2(out)
         out = self.rdb3(out)
         return x + self.residual_scale * out
+
 
 class ResidualBlock(nn.Module):
     def __init__(self, num_features=64, growth_channels=32, residual_scale=0.2):
@@ -71,7 +79,8 @@ class ResidualBlock(nn.Module):
             features.append(out)
         fused = self.fusion(torch.cat(features, dim=1))
         return x + self.residual_scale * fused
-    
+
+
 class DenseLayer(nn.Module):
     def __init__(self, in_channels, growth_channels=32):
         super().__init__()

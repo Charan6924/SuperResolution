@@ -5,15 +5,9 @@ from torch.amp import autocast, GradScaler # type: ignore
 import logging
 import numpy as np
 
-logger = logging.getLogger(__name__)
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-pixel_criterion = nn.MSELoss()
-adv_criterion = nn.MSELoss()
-
-def psnr(sr, hr, max_val=1.24):  # 1.24 covers [-0.24, 1.0] range
+def psnr(sr, hr, max_val=1):  
     """
-    Calculate PSNR for data in range [-0.24, 1.0]
+    Calculate PSNR for data in range [0, 1.0]
     """
     mse = F.mse_loss(sr, hr)
     if mse == 0:
@@ -38,12 +32,4 @@ def ssim(sr, hr, C1=0.01**2, C2=0.03**2):
     ssim_map = torch.clamp(numerator / denominator, -1.0, 1.0)
     return ssim_map.mean()
 
-@torch.no_grad()
-def validate(generator, val_loader):
-    return
 
-
-def collate_fn(batch):
-    lr_batch = torch.stack([item[0] for item in batch])
-    hr_batch = torch.stack([item[1] for item in batch])
-    return lr_batch, hr_batch
