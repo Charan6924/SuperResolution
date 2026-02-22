@@ -41,6 +41,7 @@ class Discriminator(nn.Module):
             nn.LeakyReLU(0.2, inplace=True),
             spectral_conv(f*4,1,kernel_size = 3,padding = 1)
         )
+        self._init_weights()
 
     def _init_weights(self):
         for m in self.modules():

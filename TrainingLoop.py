@@ -39,7 +39,7 @@ def validate(generator, val_loader):
     print(f"Validation - PSNR: {avg_psnr:.4f}, SSIM: {avg_ssim:.4f}, MSE: {avg_mse:.6f}")
     return avg_psnr, avg_ssim, avg_mse
 
-def pretrain_generator(num_epochs, generator, optimizer_G, train_loader, run, scheduler):
+def pretrain_generator(num_epochs, generator, optimizer_G, train_loader, val_loader, run, scheduler):
     print('Generator Pretraining')
     generator.train()
     epoch_bar = tqdm(range(num_epochs), desc='Pretrain Epochs', position=0)
@@ -75,7 +75,7 @@ def pretrain_generator(num_epochs, generator, optimizer_G, train_loader, run, sc
     print(f"Pretrain checkpoint saved to {checkpoint_dir}/pretrain_final.pt")
 
 def train(num_epochs, generator, discriminator, optimizer_D, optimizer_G,
-          train_loader, criterion, run, scheduler_G, scheduler_D):
+          train_loader, val_loader, criterion, run, scheduler_G, scheduler_D):
     print('Starting GAN training loop...')
     epoch_bar = tqdm(range(num_epochs), desc='Epochs', position=0)
     max_ssim  = 0.0
@@ -92,22 +92,23 @@ def train(num_epochs, generator, discriminator, optimizer_D, optimizer_G,
             lr = lr.to(device)
             hr = hr.to(device)
 
+            with torch.no_grad():
+                fake_hr = generator(lr)
+            with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+                real_logits = discriminator(hr)
+                fake_logits = discriminator(fake_hr)
+                d_loss = criterion.discriminator_loss(real_logits, fake_logits)
+
             if epoch % 2 == 0:
                 optimizer_D.zero_grad()
-                with torch.no_grad():
-                    fake_hr = generator(lr)         
-                with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-                    real_logits = discriminator(hr)
-                    fake_logits = discriminator(fake_hr)
-                    d_loss      = criterion.discriminator_loss(real_logits, fake_logits)
                 d_loss.backward()
                 optimizer_D.step()
 
             optimizer_G.zero_grad()
             with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-                fake_hr_g    = generator(lr)             
+                fake_hr_g = generator(lr)
                 fake_logits_g = discriminator(fake_hr_g)
-                real_logits_g = real_logits.detach()     
+                real_logits_g = real_logits.detach()
                 g_loss  = criterion.generator_loss(real_logits_g, fake_logits_g)
                 g_loss += pixel_criterion(fake_hr_g, hr) * pixel_weight
             g_loss.backward()
@@ -170,12 +171,12 @@ if __name__ == "__main__":
         },
     )
 
-    pretrain_generator(num_epochs=pretrain_epochs,generator=generator,optimizer_G=optimizer_G,train_loader=train_loader,run=run,scheduler=pretrain_scheduler,)
+    pretrain_generator(num_epochs=pretrain_epochs,generator=generator,optimizer_G=optimizer_G,train_loader=train_loader,val_loader=val_loader,run=run,scheduler=pretrain_scheduler,)
     generator = torch.compile(generator)
     for pg in optimizer_G.param_groups:
         pg['lr'] = 1e-4
     lr_scheduler_G = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_G, T_max=num_epochs)
     lr_scheduler_D = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_D, T_max=num_epochs)
-    train(num_epochs=num_epochs,generator=generator,discriminator=discriminator,optimizer_D=optimizer_D,optimizer_G=optimizer_G,train_loader=train_loader,criterion=criterion,run=run,scheduler_G=lr_scheduler_G,scheduler_D=lr_scheduler_D,)
+    train(num_epochs=num_epochs,generator=generator,discriminator=discriminator,optimizer_D=optimizer_D,optimizer_G=optimizer_G,train_loader=train_loader,val_loader=val_loader,criterion=criterion,run=run,scheduler_G=lr_scheduler_G,scheduler_D=lr_scheduler_D,)
 
     run.finish()
