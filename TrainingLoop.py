@@ -113,24 +113,32 @@ def train_gan(epochs, generator, discriminator, opt_g, opt_d, train_loader, val_
     for epoch in range(epochs):
         stats = {k: 0.0 for k in ['d_loss', 'g_loss', 'g_adv', 'g_pix', 'g_ssim']}
         n = 0
+        d_updates = 0
 
         pbar = tqdm(train_loader, desc=f'GAN {epoch+1}/{epochs}')
         for lr, hr in pbar:
             lr, hr = lr.to(device), hr.to(device)
 
-            # discriminator
-            opt_d.zero_grad()
-            with torch.no_grad():
+            # discriminator - train every other batch
+            if n % 2 == 0:
+                opt_d.zero_grad()
+                with torch.no_grad():
+                    with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+                        fake = generator(lr)
+
                 with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-                    fake = generator(lr)
+                    real_logits = discriminator(hr)
+                    fake_logits = discriminator(fake)
+                    d_loss = criterion.discriminator_loss(real_logits, fake_logits)
 
-            with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-                real_logits = discriminator(hr)
-                fake_logits = discriminator(fake)
-                d_loss = criterion.discriminator_loss(real_logits, fake_logits)
-
-            d_loss.backward()
-            opt_d.step()
+                d_loss.backward()
+                opt_d.step()
+                stats['d_loss'] += d_loss.item()
+                d_updates += 1
+            else:
+                with torch.no_grad():
+                    with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+                        real_logits = discriminator(hr)
 
             # generator
             opt_g.zero_grad()
@@ -140,13 +148,12 @@ def train_gan(epochs, generator, discriminator, opt_g, opt_d, train_loader, val_
                 g_adv = criterion.generator_loss(real_logits.detach(), fake_logits)
                 g_pix = l1_fn(fake, hr)
                 g_ssim = 1 - ssim(fake, hr)
-                g_loss = 0.0001 * g_adv + g_pix + 0.1 * g_ssim
+                g_loss = 0.0001 * g_adv + g_pix + 0.3 * g_ssim
 
             g_loss.backward()
             torch.nn.utils.clip_grad_norm_(generator.parameters(), max_norm=10.0)
             opt_g.step()
 
-            stats['d_loss'] += d_loss.item()
             stats['g_loss'] += g_loss.item()
             stats['g_adv'] += g_adv.item()
             stats['g_pix'] += g_pix.item()
@@ -155,7 +162,8 @@ def train_gan(epochs, generator, discriminator, opt_g, opt_d, train_loader, val_
 
             pbar.set_postfix({'D': f'{d_loss.item():.3f}', 'G': f'{g_loss.item():.3f}'})
 
-        for k in stats:
+        stats['d_loss'] /= max(d_updates, 1)
+        for k in ['g_loss', 'g_adv', 'g_pix', 'g_ssim']:
             stats[k] /= n
 
         sched_g.step()
@@ -201,7 +209,7 @@ if __name__ == "__main__":
     gan_epochs = 100
     batch_size = 256
     lr_g = 1e-4
-    lr_d = 1e-5
+    lr_d = 5e-6
 
     tensor_dir = 'data/pt_tensors'
     hr_max = torch.load(f'{tensor_dir}/normalization_stats.pt')['hr_p995']
