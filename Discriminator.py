@@ -3,10 +3,10 @@ import torch.nn as nn
 
 
 class DiscBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, stride=1):
+    def __init__(self, in_ch, out_ch, stride=1):
         super().__init__()
         self.block = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1),
+            nn.Conv2d(in_ch, out_ch, 3, stride=stride, padding=1),
             nn.LeakyReLU(0.2, inplace=True),
         )
 
@@ -15,26 +15,26 @@ class DiscBlock(nn.Module):
 
 
 class Discriminator(nn.Module):
-    def __init__(self, in_channels=3, base_features=64):
+    def __init__(self, in_ch=3, base_ch=64):
         super().__init__()
-        f = base_features
+        f = base_ch
 
         self.backbone = nn.Sequential(
-            nn.Conv2d(in_channels, f, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(in_ch, f, 3, padding=1),
             nn.LeakyReLU(0.2, inplace=True),
-            DiscBlock(f, f, stride=2),        # 125 -> 63
-            DiscBlock(f, f * 2, stride=1),
-            DiscBlock(f * 2, f * 2, stride=2),  # 63 -> 32
-            DiscBlock(f * 2, f * 4, stride=1),
-            DiscBlock(f * 4, f * 4, stride=2),  # 32 -> 16
-            DiscBlock(f * 4, f * 8, stride=1),
-            DiscBlock(f * 8, f * 8, stride=2),  # 16 -> 8
+            DiscBlock(f, f, stride=2),
+            DiscBlock(f, f * 2),
+            DiscBlock(f * 2, f * 2, stride=2),
+            DiscBlock(f * 2, f * 4),
+            DiscBlock(f * 4, f * 4, stride=2),
+            DiscBlock(f * 4, f * 8),
+            DiscBlock(f * 8, f * 8, stride=2),
         )
 
         self.head = nn.Sequential(
-            nn.Conv2d(f * 8, f * 4, kernel_size=3, padding=1),
+            nn.Conv2d(f * 8, f * 4, 3, padding=1),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(f * 4, 1, kernel_size=3, padding=1),
+            nn.Conv2d(f * 4, 1, 3, padding=1),
         )
 
         self._init_weights()
@@ -47,9 +47,7 @@ class Discriminator(nn.Module):
                     nn.init.zeros_(m.bias)
 
     def forward(self, x):
-        x = self.backbone(x)
-        x = self.head(x)
-        return x
+        return self.head(self.backbone(x))
 
 
 class RelativisticAverageLoss(nn.Module):
@@ -59,21 +57,16 @@ class RelativisticAverageLoss(nn.Module):
         self.real_label = real_label
         self.fake_label = fake_label
 
-    def discriminator_loss(self, real_logits, fake_logits):
-        real_vs_fake = real_logits - fake_logits.mean()
-        fake_vs_real = fake_logits - real_logits.mean()
+    def discriminator_loss(self, real, fake):
+        r_vs_f = real - fake.mean()
+        f_vs_r = fake - real.mean()
+        loss_r = self.bce(r_vs_f, self.real_label * torch.ones_like(r_vs_f))
+        loss_f = self.bce(f_vs_r, self.fake_label * torch.ones_like(f_vs_r))
+        return (loss_r + loss_f) / 2
 
-        real_target = self.real_label * torch.ones_like(real_vs_fake)
-        fake_target = self.fake_label * torch.ones_like(fake_vs_real)
-
-        loss_real = self.bce(real_vs_fake, real_target)
-        loss_fake = self.bce(fake_vs_real, fake_target)
-        return (loss_real + loss_fake) / 2
-
-    def generator_loss(self, real_logits, fake_logits):
-        real_vs_fake = real_logits - fake_logits.mean()
-        fake_vs_real = fake_logits - real_logits.mean()
-
-        loss_real = self.bce(real_vs_fake, torch.zeros_like(real_vs_fake))
-        loss_fake = self.bce(fake_vs_real, torch.ones_like(fake_vs_real))
-        return (loss_real + loss_fake) / 2
+    def generator_loss(self, real, fake):
+        r_vs_f = real - fake.mean()
+        f_vs_r = fake - real.mean()
+        loss_r = self.bce(r_vs_f, torch.zeros_like(r_vs_f))
+        loss_f = self.bce(f_vs_r, torch.ones_like(f_vs_r))
+        return (loss_r + loss_f) / 2

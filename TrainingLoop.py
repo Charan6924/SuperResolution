@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import numpy as np
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from Generator import Generator
@@ -15,41 +14,29 @@ checkpoint_dir = 'checkpoints'
 os.makedirs(checkpoint_dir, exist_ok=True)
 
 
-def compute_grad_norm(model):
-    total_norm = 0.0
+def grad_norm(model):
+    total = 0.0
     for p in model.parameters():
         if p.grad is not None:
-            total_norm += p.grad.data.norm(2).item() ** 2
-    return total_norm ** 0.5
+            total += p.grad.data.norm(2).item() ** 2
+    return total ** 0.5
 
 
 @torch.no_grad()
 def log_images(generator, val_loader, run, epoch, num_samples=4):
     generator.eval()
     lr, hr = next(iter(val_loader))
-    lr = lr[:num_samples].to(device)
-    hr = hr[:num_samples].to(device)
+    lr, hr = lr[:num_samples].to(device), hr[:num_samples].to(device)
 
-    # Don't use autocast for inference - it can mess with BatchNorm
     sr = generator(lr.float())
-
-    # Debug: print SR output range
-    print(f"[log_images] SR range: min={sr.min().item():.4f}, max={sr.max().item():.4f}, mean={sr.mean().item():.4f}")
-    print(f"[log_images] HR range: min={hr.min().item():.4f}, max={hr.max().item():.4f}, mean={hr.mean().item():.4f}")
-
-    # Clamp SR to [0,1] for proper display
     sr = torch.clamp(sr, 0, 1)
-    lr_upscaled = torch.nn.functional.interpolate(lr, size=(125, 125), mode='nearest')
+    lr_up = nn.functional.interpolate(lr, size=(125, 125), mode='nearest')
 
     images = []
     for i in range(num_samples):
-        # Convert to numpy in [H,W,C] format for wandb
-        lr_np = lr_upscaled[i].cpu().float().permute(1, 2, 0).numpy()
-        sr_np = sr[i].cpu().float().permute(1, 2, 0).numpy()
-        hr_np = hr[i].cpu().float().permute(1, 2, 0).numpy()
-        images.append(wandb.Image(lr_np, caption=f"LR_{i}"))
-        images.append(wandb.Image(sr_np, caption=f"SR_{i}"))
-        images.append(wandb.Image(hr_np, caption=f"HR_{i}"))
+        images.append(wandb.Image(lr_up[i].cpu().permute(1, 2, 0).numpy(), caption=f"LR_{i}"))
+        images.append(wandb.Image(sr[i].cpu().permute(1, 2, 0).numpy(), caption=f"SR_{i}"))
+        images.append(wandb.Image(hr[i].cpu().permute(1, 2, 0).numpy(), caption=f"HR_{i}"))
 
     run.log({f"samples/epoch_{epoch}": images})
     generator.train()
@@ -58,260 +45,202 @@ def log_images(generator, val_loader, run, epoch, num_samples=4):
 @torch.no_grad()
 def validate(generator, val_loader):
     generator.eval()
-    total_psnr = total_ssim = total_mse = 0.0
-    count = 0
-    pixel_criterion = nn.L1Loss()
+    total_psnr, total_ssim, total_mse, count = 0.0, 0.0, 0.0, 0
+    l1 = nn.L1Loss()
 
     for lr, hr in val_loader:
         lr, hr = lr.to(device), hr.to(device)
-        # Don't use autocast for validation - use float32 for accurate metrics
-        fake_hr = generator(lr.float())
-        total_psnr += psnr(fake_hr, hr).item()
-        total_ssim += ssim(fake_hr, hr).item()
-        total_mse += pixel_criterion(fake_hr, hr).item()
+        sr = generator(lr.float())
+        total_psnr += psnr(sr, hr).item()
+        total_ssim += ssim(sr, hr).item()
+        total_mse += l1(sr, hr).item()
         count += 1
 
     generator.train()
-    avg_psnr, avg_ssim, avg_mse = total_psnr/count, total_ssim/count, total_mse/count
-    print(f"Validation - PSNR: {avg_psnr:.4f}, SSIM: {avg_ssim:.4f}, MSE: {avg_mse:.6f}")
-    return avg_psnr, avg_ssim, avg_mse
+    return total_psnr / count, total_ssim / count, total_mse / count
 
 
-def pretrain_generator(num_epochs, generator, optimizer, train_loader, val_loader, run):
-    pixel_loss_fn = nn.L1Loss()
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
+def pretrain(epochs, generator, optimizer, train_loader, val_loader, run):
+    l1_fn = nn.L1Loss()
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
     generator.train()
 
-    for epoch in range(num_epochs):
-        total_loss = 0.0
-        total_grad_norm = 0.0
-        num_batches = 0
+    for epoch in range(epochs):
+        total_loss, total_grad, n = 0.0, 0.0, 0
 
-        pbar = tqdm(train_loader, desc=f'Pretrain {epoch+1}/{num_epochs}')
+        pbar = tqdm(train_loader, desc=f'Pretrain {epoch+1}/{epochs}')
         for lr, hr in pbar:
             lr, hr = lr.to(device), hr.to(device)
 
             optimizer.zero_grad()
             with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
                 sr = generator(lr)
-                loss = pixel_loss_fn(sr, hr)
+                loss = l1_fn(sr, hr) + 0.1 * (1 - ssim(sr, hr))
             loss.backward()
 
-            grad_norm = compute_grad_norm(generator)
+            g = grad_norm(generator)
             optimizer.step()
 
             total_loss += loss.item()
-            total_grad_norm += grad_norm
-            num_batches += 1
-
-            pbar.set_postfix({
-                'loss': f'{loss.item():.6f}',
-                'grad': f'{grad_norm:.4f}'
-            })
+            total_grad += g
+            n += 1
+            pbar.set_postfix({'loss': f'{loss.item():.6f}'})
 
         scheduler.step()
-        avg_loss = total_loss / num_batches
-        avg_grad = total_grad_norm / num_batches
-
-        # Validate
         avg_psnr, avg_ssim, avg_mse = validate(generator, val_loader)
 
-        # Log to wandb
         run.log({
-            'pretrain/loss': avg_loss,
-            'pretrain/grad_norm': avg_grad,
-            'pretrain/lr': scheduler.get_last_lr()[0],
+            'pretrain/loss': total_loss / n,
             'pretrain/psnr': avg_psnr,
             'pretrain/ssim': avg_ssim,
-            'pretrain/mse': avg_mse,
-            'pretrain/epoch': epoch + 1,
+            'epoch': epoch + 1,
         })
+        print(f"Epoch {epoch+1}: loss={total_loss/n:.6f}, PSNR={avg_psnr:.2f}, SSIM={avg_ssim:.4f}")
 
-        print(f"Epoch {epoch+1}: loss={avg_loss:.6f}, grad={avg_grad:.4f}, PSNR={avg_psnr:.2f}, SSIM={avg_ssim:.4f}")
-
-    # Save pretrained checkpoint
-    torch.save({
-        'generator': generator.state_dict(),
-        'optimizer': optimizer.state_dict(),
-    }, f'{checkpoint_dir}/pretrain_final.pt')
-    print(f"Saved pretrained generator to {checkpoint_dir}/pretrain_final.pt")
+    torch.save({'generator': generator.state_dict()}, f'{checkpoint_dir}/pretrain_final.pt')
 
 
-def train_gan(num_epochs, generator, discriminator, opt_G, opt_D,
-              train_loader, val_loader, run, log_images_every=10):
+def train_gan(epochs, generator, discriminator, opt_g, opt_d, train_loader, val_loader, run):
     criterion = RelativisticAverageLoss()
-    pixel_loss_fn = nn.L1Loss()
-
-    sched_G = torch.optim.lr_scheduler.CosineAnnealingLR(opt_G, T_max=num_epochs)
-    sched_D = torch.optim.lr_scheduler.CosineAnnealingLR(opt_D, T_max=num_epochs)
+    l1_fn = nn.L1Loss()
+    sched_g = torch.optim.lr_scheduler.CosineAnnealingLR(opt_g, T_max=epochs)
+    sched_d = torch.optim.lr_scheduler.CosineAnnealingLR(opt_d, T_max=epochs)
 
     generator.train()
     discriminator.train()
     best_ssim = 0.0
 
-    for epoch in range(num_epochs):
-        pixel_weight = max(0.1, 1.0 - epoch * (0.9 / num_epochs))
+    for epoch in range(epochs):
+        stats = {k: 0.0 for k in ['d_loss', 'g_loss', 'g_adv', 'g_pix', 'g_ssim']}
+        n = 0
 
-        stats = {k: 0.0 for k in ['d_loss', 'g_loss', 'g_adv', 'g_pix',
-                                   'd_grad', 'g_grad', 'real_logits', 'fake_logits']}
-        num_batches = 0
-
-        pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs}')
+        pbar = tqdm(train_loader, desc=f'GAN {epoch+1}/{epochs}')
         for lr, hr in pbar:
             lr, hr = lr.to(device), hr.to(device)
 
-            # === Train Discriminator ===
-            opt_D.zero_grad()
+            # discriminator
+            opt_d.zero_grad()
             with torch.no_grad():
                 with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-                    fake_hr = generator(lr)
+                    fake = generator(lr)
 
             with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
                 real_logits = discriminator(hr)
-                fake_logits = discriminator(fake_hr)
+                fake_logits = discriminator(fake)
                 d_loss = criterion.discriminator_loss(real_logits, fake_logits)
 
             d_loss.backward()
-            d_grad = compute_grad_norm(discriminator)
-            opt_D.step()
+            opt_d.step()
 
-            # === Train Generator ===
-            opt_G.zero_grad()
+            # generator
+            opt_g.zero_grad()
             with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-                fake_hr = generator(lr)
-                fake_logits_g = discriminator(fake_hr)
-                g_adv = criterion.generator_loss(real_logits.detach(), fake_logits_g)
-                g_pix = pixel_loss_fn(fake_hr, hr)
-                # Standard ESRGAN: adv_weight=0.001, pixel stays dominant
-                g_loss = 0.001 * g_adv + g_pix
+                fake = generator(lr)
+                fake_logits = discriminator(fake)
+                g_adv = criterion.generator_loss(real_logits.detach(), fake_logits)
+                g_pix = l1_fn(fake, hr)
+                g_ssim = 1 - ssim(fake, hr)
+                g_loss = 0.0001 * g_adv + g_pix + 0.1 * g_ssim
 
             g_loss.backward()
             torch.nn.utils.clip_grad_norm_(generator.parameters(), max_norm=10.0)
-            g_grad = compute_grad_norm(generator)
-            opt_G.step()
+            opt_g.step()
+
             stats['d_loss'] += d_loss.item()
             stats['g_loss'] += g_loss.item()
             stats['g_adv'] += g_adv.item()
             stats['g_pix'] += g_pix.item()
-            stats['d_grad'] += d_grad
-            stats['g_grad'] += g_grad
-            stats['real_logits'] += real_logits.mean().item()
-            stats['fake_logits'] += fake_logits.mean().item()
-            num_batches += 1
+            stats['g_ssim'] += g_ssim.item()
+            n += 1
 
-            pbar.set_postfix({
-                'D': f'{d_loss.item():.3f}',
-                'G': f'{g_loss.item():.3f}',
-                'Dg': f'{d_grad:.1f}',
-                'Gg': f'{g_grad:.1f}'
-            })
+            pbar.set_postfix({'D': f'{d_loss.item():.3f}', 'G': f'{g_loss.item():.3f}'})
 
-        # Average stats
         for k in stats:
-            stats[k] /= num_batches
+            stats[k] /= n
 
-        sched_G.step()
-        sched_D.step()
+        sched_g.step()
+        sched_d.step()
 
-        # Validate
         avg_psnr, avg_ssim, avg_mse = validate(generator, val_loader)
 
-        # Print epoch summary
-        print(f"Epoch {epoch+1}: D={stats['d_loss']:.4f}, G={stats['g_loss']:.4f}, "
-              f"Dg={stats['d_grad']:.2f}, Gg={stats['g_grad']:.2f}, "
-              f"Real={stats['real_logits']:.2f}, Fake={stats['fake_logits']:.2f}")
-
-        # Log to wandb
         run.log({
             'train/d_loss': stats['d_loss'],
             'train/g_loss': stats['g_loss'],
-            'train/g_adv_loss': stats['g_adv'],
-            'train/g_pixel_loss': stats['g_pix'],
-            'train/pixel_weight': pixel_weight,
-            'train/lr_G': sched_G.get_last_lr()[0],
-            'train/lr_D': sched_D.get_last_lr()[0],
-            'debug/d_grad_norm': stats['d_grad'],
-            'debug/g_grad_norm': stats['g_grad'],
-            'debug/real_logits': stats['real_logits'],
-            'debug/fake_logits': stats['fake_logits'],
+            'train/g_adv': stats['g_adv'],
+            'train/g_pix': stats['g_pix'],
+            'train/g_ssim': stats['g_ssim'],
             'val/psnr': avg_psnr,
             'val/ssim': avg_ssim,
-            'val/mse': avg_mse,
             'epoch': epoch + 1,
         })
 
-        # Log images periodically
-        if (epoch + 1) % log_images_every == 0 or epoch == 0:
+        print(f"Epoch {epoch+1}: D={stats['d_loss']:.4f}, G={stats['g_loss']:.4f}, PSNR={avg_psnr:.2f}, SSIM={avg_ssim:.4f}")
+
+        if (epoch + 1) % 10 == 0 or epoch == 0:
             log_images(generator, val_loader, run, epoch + 1)
 
-        # Save best model
         if avg_ssim > best_ssim:
             best_ssim = avg_ssim
             torch.save({
-                'epoch': epoch,
                 'generator': generator.state_dict(),
                 'discriminator': discriminator.state_dict(),
             }, f'{checkpoint_dir}/best_model.pt')
 
-        # Save periodic checkpoint
         if (epoch + 1) % 10 == 0:
             torch.save({
                 'epoch': epoch,
                 'generator': generator.state_dict(),
                 'discriminator': discriminator.state_dict(),
-                'opt_G': opt_G.state_dict(),
-                'opt_D': opt_D.state_dict(),
+                'opt_g': opt_g.state_dict(),
+                'opt_d': opt_d.state_dict(),
             }, f'{checkpoint_dir}/epoch_{epoch+1:03d}.pt')
 
 
 if __name__ == "__main__":
-    PRETRAIN_EPOCHS = 10
-    GAN_EPOCHS = 200
-    BATCH_SIZE = 256
-    LR_G = 1e-4
-    LR_D = 1e-5  # Lower than G to prevent D from dominating
+    pretrain_epochs = 50
+    gan_epochs = 100
+    batch_size = 256
+    lr_g = 1e-4
+    lr_d = 1e-5
 
     tensor_dir = 'data/pt_tensors'
     hr_max = torch.load(f'{tensor_dir}/normalization_stats.pt')['hr_p995']
 
     train_dataset = JetImageDataset(tensor_dir=tensor_dir, split="train", train_ratio=0.8, hr_max=hr_max)
     val_dataset = JetImageDataset(tensor_dir=tensor_dir, split="val", train_ratio=0.8, hr_max=hr_max)
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, num_workers=3)
-    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, num_workers=3)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=3)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=3)
+
     generator = Generator().to(device)
     discriminator = Discriminator().to(device)
 
-    print(f"Generator params: {sum(p.numel() for p in generator.parameters()):,}")
-    print(f"Discriminator params: {sum(p.numel() for p in discriminator.parameters()):,}")
+    print(f"Generator: {sum(p.numel() for p in generator.parameters()):,} params")
+    print(f"Discriminator: {sum(p.numel() for p in discriminator.parameters()):,} params")
 
     run = wandb.init(
         entity="charanvardham",
         project="Super Resolution",
         config={
-            "architecture": "ESRGAN",
-            "pretrain_epochs": PRETRAIN_EPOCHS,
-            "gan_epochs": GAN_EPOCHS,
-            "batch_size": BATCH_SIZE,
-            "lr_G": LR_G,
-            "lr_D": LR_D,
+            "pretrain_epochs": pretrain_epochs,
+            "gan_epochs": gan_epochs,
+            "batch_size": batch_size,
+            "lr_g": lr_g,
+            "lr_d": lr_d,
         },
     )
 
-    # Load pretrained generator (skip pretraining if checkpoint exists)
     pretrain_path = f'{checkpoint_dir}/pretrain_final.pt'
     if os.path.exists(pretrain_path):
         print(f"Loading pretrained generator from {pretrain_path}")
-        ckpt = torch.load(pretrain_path, map_location=device)
-        generator.load_state_dict(ckpt['generator'])
+        generator.load_state_dict(torch.load(pretrain_path, map_location=device)['generator'])
     else:
-        opt_G = torch.optim.AdamW(generator.parameters(), lr=LR_G, betas=(0.9, 0.999))
-        pretrain_generator(PRETRAIN_EPOCHS, generator, opt_G, train_loader, val_loader, run)
+        opt_g = torch.optim.AdamW(generator.parameters(), lr=lr_g)
+        pretrain(pretrain_epochs, generator, opt_g, train_loader, val_loader, run)
 
-    opt_G = torch.optim.AdamW(generator.parameters(), lr=LR_G, betas=(0.9, 0.999))
-    opt_D = torch.optim.AdamW(discriminator.parameters(), lr=LR_D, betas=(0.9, 0.999))
+    opt_g = torch.optim.AdamW(generator.parameters(), lr=lr_g)
+    opt_d = torch.optim.AdamW(discriminator.parameters(), lr=lr_d)
 
-    train_gan(GAN_EPOCHS, generator, discriminator, opt_G, opt_D,
-              train_loader, val_loader, run)
+    train_gan(gan_epochs, generator, discriminator, opt_g, opt_d, train_loader, val_loader, run)
 
     run.finish()
-    print("Training complete!")
+    print("Done")
