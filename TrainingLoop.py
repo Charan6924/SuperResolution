@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import numpy as np
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from Generator import Generator
@@ -29,15 +30,26 @@ def log_images(generator, val_loader, run, epoch, num_samples=4):
     lr = lr[:num_samples].to(device)
     hr = hr[:num_samples].to(device)
 
-    with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-        sr = generator(lr)
+    # Don't use autocast for inference - it can mess with BatchNorm
+    sr = generator(lr.float())
+
+    # Debug: print SR output range
+    print(f"[log_images] SR range: min={sr.min().item():.4f}, max={sr.max().item():.4f}, mean={sr.mean().item():.4f}")
+    print(f"[log_images] HR range: min={hr.min().item():.4f}, max={hr.max().item():.4f}, mean={hr.mean().item():.4f}")
+
+    # Clamp SR to [0,1] for proper display
+    sr = torch.clamp(sr, 0, 1)
     lr_upscaled = torch.nn.functional.interpolate(lr, size=(125, 125), mode='nearest')
 
     images = []
     for i in range(num_samples):
-        images.append(wandb.Image(lr_upscaled[i].cpu().float(), caption=f"LR_{i}"))
-        images.append(wandb.Image(sr[i].cpu().float(), caption=f"SR_{i}"))
-        images.append(wandb.Image(hr[i].cpu().float(), caption=f"HR_{i}"))
+        # Convert to numpy in [H,W,C] format for wandb
+        lr_np = lr_upscaled[i].cpu().float().permute(1, 2, 0).numpy()
+        sr_np = sr[i].cpu().float().permute(1, 2, 0).numpy()
+        hr_np = hr[i].cpu().float().permute(1, 2, 0).numpy()
+        images.append(wandb.Image(lr_np, caption=f"LR_{i}"))
+        images.append(wandb.Image(sr_np, caption=f"SR_{i}"))
+        images.append(wandb.Image(hr_np, caption=f"HR_{i}"))
 
     run.log({f"samples/epoch_{epoch}": images})
     generator.train()
@@ -52,8 +64,8 @@ def validate(generator, val_loader):
 
     for lr, hr in val_loader:
         lr, hr = lr.to(device), hr.to(device)
-        with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-            fake_hr = generator(lr)
+        # Don't use autocast for validation - use float32 for accurate metrics
+        fake_hr = generator(lr.float())
         total_psnr += psnr(fake_hr, hr).item()
         total_ssim += ssim(fake_hr, hr).item()
         total_mse += pixel_criterion(fake_hr, hr).item()
