@@ -8,10 +8,12 @@ from JetImageDataset import JetImageDataset
 from utils import psnr, ssim
 import os
 import wandb
+import matplotlib.pyplot as plt
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 checkpoint_dir = 'checkpoints'
 os.makedirs(checkpoint_dir, exist_ok=True)
+os.makedirs('samples', exist_ok=True)
 
 
 def grad_norm(model):
@@ -32,13 +34,19 @@ def log_images(generator, val_loader, run, epoch, num_samples=4):
     sr = torch.clamp(sr, 0, 1)
     lr_up = nn.functional.interpolate(lr, size=(125, 125), mode='nearest')
 
-    images = []
     for i in range(num_samples):
-        images.append(wandb.Image(lr_up[i].cpu().permute(1, 2, 0).numpy(), caption=f"LR_{i}"))
-        images.append(wandb.Image(sr[i].cpu().permute(1, 2, 0).numpy(), caption=f"SR_{i}"))
-        images.append(wandb.Image(hr[i].cpu().permute(1, 2, 0).numpy(), caption=f"HR_{i}"))
-
-    run.log({f"samples/epoch_{epoch}": images})
+        vmax = hr[i].max().item()
+        fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+        axes[0].imshow(lr_up[i, 0].cpu() / vmax, cmap='hot', vmin=0, vmax=1)
+        axes[0].set_title('LR')
+        axes[1].imshow(sr[i, 0].cpu() / vmax, cmap='hot', vmin=0, vmax=1)
+        axes[1].set_title('SR')
+        axes[2].imshow(hr[i, 0].cpu() / vmax, cmap='hot', vmin=0, vmax=1)
+        axes[2].set_title('HR')
+        for ax in axes:
+            ax.axis('off')
+        plt.savefig(f'samples/epoch_{epoch}_sample_{i}.png', dpi=150, bbox_inches='tight')
+        plt.close()
     generator.train()
 
 
