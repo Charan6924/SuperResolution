@@ -43,7 +43,7 @@ class ResBlock(nn.Module):
 
 
 class Generator(nn.Module):
-    def __init__(self, num_blocks=16, in_ch=3, base_ch=64):
+    def __init__(self, num_blocks=16, in_ch=3, base_ch=96):
         super().__init__()
 
         self.input = nn.Sequential(
@@ -71,12 +71,10 @@ class Generator(nn.Module):
             nn.Conv2d(base_ch, in_ch, 9, padding=4)
         )
 
-        self.resize = nn.Upsample(size=(125, 125), mode='bilinear', align_corners=False)
-
     def forward(self, x):
         x1 = self.input(x)
         x2 = self.blocks(x1)
         x3 = self.mid(x2)
         out = self.upsample(x1 + x3)
         out = self.output(out)
-        return self.resize(out)
+        return out[:, :, :125, :125]

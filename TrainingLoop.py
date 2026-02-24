@@ -62,8 +62,11 @@ def validate(generator, val_loader):
 
 def pretrain(epochs, generator, optimizer, train_loader, val_loader, run):
     l1_fn = nn.L1Loss()
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='max', factor=0.5, patience=10, min_lr=1e-6
+    )
     generator.train()
+    best_ssim = 0.0
 
     for epoch in range(epochs):
         total_loss, total_grad, n = 0.0, 0.0, 0
@@ -86,16 +89,25 @@ def pretrain(epochs, generator, optimizer, train_loader, val_loader, run):
             n += 1
             pbar.set_postfix({'loss': f'{loss.item():.6f}'})
 
-        scheduler.step()
         avg_psnr, avg_ssim, avg_mse = validate(generator, val_loader)
+        scheduler.step(avg_ssim)
+        current_lr = optimizer.param_groups[0]['lr']
 
         run.log({
             'pretrain/loss': total_loss / n,
             'pretrain/psnr': avg_psnr,
             'pretrain/ssim': avg_ssim,
+            'pretrain/lr': current_lr,
             'epoch': epoch + 1,
         })
-        print(f"Epoch {epoch+1}: loss={total_loss/n:.6f}, PSNR={avg_psnr:.2f}, SSIM={avg_ssim:.4f}")
+        print(f"Epoch {epoch+1}: loss={total_loss/n:.6f}, PSNR={avg_psnr:.2f}, SSIM={avg_ssim:.4f}, lr={current_lr:.2e}")
+
+        if avg_ssim > best_ssim:
+            best_ssim = avg_ssim
+            torch.save({'generator': generator.state_dict()}, f'{checkpoint_dir}/pretrain_best.pt')
+
+        if (epoch + 1) % 10 == 0 or epoch == 0:
+            log_images(generator, val_loader, run, epoch + 1)
 
     torch.save({'generator': generator.state_dict()}, f'{checkpoint_dir}/pretrain_final.pt')
 
@@ -205,8 +217,8 @@ def train_gan(epochs, generator, discriminator, opt_g, opt_d, train_loader, val_
 
 
 if __name__ == "__main__":
-    pretrain_epochs = 50
-    gan_epochs = 100
+    pretrain_epochs = 200
+    gan_epochs = 0
     batch_size = 256
     lr_g = 1e-4
     lr_d = 5e-6
@@ -245,10 +257,10 @@ if __name__ == "__main__":
         opt_g = torch.optim.AdamW(generator.parameters(), lr=lr_g)
         pretrain(pretrain_epochs, generator, opt_g, train_loader, val_loader, run)
 
-    opt_g = torch.optim.AdamW(generator.parameters(), lr=lr_g)
-    opt_d = torch.optim.AdamW(discriminator.parameters(), lr=lr_d)
-
-    train_gan(gan_epochs, generator, discriminator, opt_g, opt_d, train_loader, val_loader, run)
+    if gan_epochs > 0:
+        opt_g = torch.optim.AdamW(generator.parameters(), lr=lr_g)
+        opt_d = torch.optim.AdamW(discriminator.parameters(), lr=lr_d)
+        train_gan(gan_epochs, generator, discriminator, opt_g, opt_d, train_loader, val_loader, run)
 
     run.finish()
     print("Done")
