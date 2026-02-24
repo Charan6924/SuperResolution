@@ -16,6 +16,11 @@ os.makedirs(checkpoint_dir, exist_ok=True)
 os.makedirs('samples', exist_ok=True)
 
 
+def weighted_l1(sr, hr):
+    weight = (hr > 0.01).float() * 9 + 1
+    return (weight * (sr - hr).abs()).mean()
+
+
 def grad_norm(model):
     total = 0.0
     for p in model.parameters():
@@ -69,7 +74,6 @@ def validate(generator, val_loader):
 
 
 def pretrain(epochs, generator, optimizer, train_loader, val_loader, run):
-    l1_fn = nn.L1Loss()
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode='max', factor=0.5, patience=10, min_lr=1e-6
     )
@@ -86,7 +90,7 @@ def pretrain(epochs, generator, optimizer, train_loader, val_loader, run):
             optimizer.zero_grad()
             with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
                 sr = generator(lr)
-                loss = l1_fn(sr, hr) + 0.1 * (1 - ssim(sr, hr))
+                loss = weighted_l1(sr, hr) + 0.1 * (1 - ssim(sr, hr))
             loss.backward()
 
             g = grad_norm(generator)
@@ -122,7 +126,6 @@ def pretrain(epochs, generator, optimizer, train_loader, val_loader, run):
 
 def train_gan(epochs, generator, discriminator, opt_g, opt_d, train_loader, val_loader, run):
     criterion = RelativisticAverageLoss()
-    l1_fn = nn.L1Loss()
     sched_g = torch.optim.lr_scheduler.CosineAnnealingLR(opt_g, T_max=epochs)
     sched_d = torch.optim.lr_scheduler.CosineAnnealingLR(opt_d, T_max=epochs)
 
@@ -166,7 +169,7 @@ def train_gan(epochs, generator, discriminator, opt_g, opt_d, train_loader, val_
                 fake = generator(lr)
                 fake_logits = discriminator(fake)
                 g_adv = criterion.generator_loss(real_logits.detach(), fake_logits)
-                g_pix = l1_fn(fake, hr)
+                g_pix = weighted_l1(fake, hr)
                 g_ssim = 1 - ssim(fake, hr)
                 g_loss = 0.0001 * g_adv + g_pix + 0.3 * g_ssim
 
@@ -225,8 +228,8 @@ def train_gan(epochs, generator, discriminator, opt_g, opt_d, train_loader, val_
 
 
 if __name__ == "__main__":
-    pretrain_epochs = 200
-    gan_epochs = 0
+    pretrain_epochs = 0
+    gan_epochs = 100
     batch_size = 256
     lr_g = 1e-4
     lr_d = 5e-6
