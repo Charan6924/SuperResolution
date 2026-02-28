@@ -10,6 +10,12 @@ This project implements a deep learning approach to single-image super-resolutio
 - **Two-stage training**: MSE pre-training followed by adversarial fine-tuning
 - **Dataset**: 111,000+ training images for robust learning
 
+## Samples
+
+![Sample 1](epoch_100_sample_1.png)
+![Sample 2](epoch_100_sample_2.png)
+![Sample 3](epoch_100_sample_3.png)
+
 ## Key Features
 
 - Residual blocks with batch normalization for stable training
