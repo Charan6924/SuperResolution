@@ -15,3 +15,5 @@ checkpoints/
 wandb/
 logs/
 checkpoints/
+samples/
+samples_0/

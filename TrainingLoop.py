@@ -143,7 +143,7 @@ def train_gan(epochs, generator, discriminator, opt_g, opt_d, train_loader, val_
             lr, hr = lr.to(device), hr.to(device)
 
             # discriminator - train every other batch
-            if n % 2 == 0:
+            if n % 3 == 0:
                 opt_d.zero_grad()
                 with torch.no_grad():
                     with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
@@ -171,7 +171,7 @@ def train_gan(epochs, generator, discriminator, opt_g, opt_d, train_loader, val_
                 g_adv = criterion.generator_loss(real_logits.detach(), fake_logits)
                 g_pix = weighted_l1(fake, hr)
                 g_ssim = 1 - ssim(fake, hr)
-                g_loss = 0.0001 * g_adv + g_pix + 0.3 * g_ssim
+                g_loss = 0.005 * g_adv + g_pix + 0.3 * g_ssim
 
             g_loss.backward()
             torch.nn.utils.clip_grad_norm_(generator.parameters(), max_norm=10.0)
@@ -228,11 +228,11 @@ def train_gan(epochs, generator, discriminator, opt_g, opt_d, train_loader, val_
 
 
 if __name__ == "__main__":
-    pretrain_epochs = 0
+    pretrain_epochs = 50
     gan_epochs = 100
     batch_size = 256
     lr_g = 1e-4
-    lr_d = 5e-6
+    lr_d = 1e-6
 
     tensor_dir = 'data/pt_tensors'
     hr_max = torch.load(f'{tensor_dir}/normalization_stats.pt')['hr_p995']
