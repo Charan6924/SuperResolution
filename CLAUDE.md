@@ -15,36 +15,37 @@ PyTorch SRGAN implementation for upscaling jet particle images from 64×64 to 12
 ## Running Training
 
 ```bash
-uv run TrainingLoop.py          # Local GPU
+uv run train.py                 # Local GPU
 sbatch train.sh                 # SLURM cluster (H100)
 ```
 
-Key hyperparameters in `TrainingLoop.py`:
+Key hyperparameters in `config.py`:
 - Pre-train: 50 epochs, batch 256, lr_g=1e-4
-- GAN: 100 epochs, batch 256, lr_g=1e-4, lr_d=1e-5
-- Loss weights: 0.0001×adversarial + 1×pixel + 0.1×SSIM
+- GAN: 100 epochs, batch 256, lr_g=1e-4, lr_d=1e-6
+- Loss weights: 0.005×adversarial + 1×pixel + 0.3×SSIM
 
 ## Code Organization
 
-- `TrainingLoop.py` - Main training orchestration (pre-train and GAN phases)
-- `Generator.py` - Generator with ResBlocks, ChannelAttention, UpsampleBlock
-- `Discriminator.py` - PatchGAN + RelativisticAverageLoss class
-- `JetImageDataset.py` - IterableDataset for streaming .pt tensor files
+- `train.py` - Main training orchestration (pre-train and GAN phases)
+- `generator.py` - Generator with ResBlocks, ChannelAttention, UpsampleBlock
+- `discriminator.py` - PatchGAN + RelativisticAverageLoss class
+- `dataset.py` - IterableDataset for streaming .pt tensor files
 - `utils.py` - PSNR/SSIM metric implementations
-- `convert_to_pt.py` - Preprocessing script (parquet → .pt tensors)
+- `config.py` - Centralized hyperparameters and settings
+- `scripts/convert_to_pt.py` - Preprocessing script (parquet → .pt tensors)
 
 ## Data Pipeline
 
 - Source: Parquet files with X_jets_LR (64×64) and X_jets (125×125)
-- Preprocessing: `convert_to_pt.py` chunks into .pt files (500 samples each)
+- Preprocessing: `scripts/convert_to_pt.py` chunks into .pt files (500 samples each)
 - Normalization: Clamp to [0,1] using 99.5th percentile (stats in `normalization_stats.pt`)
 - Dataset splits: train 80%, val 10%, test 10%
 
 ## Training Phases
 
-1. **Pre-training** (50 epochs): L1 + 0.1×SSIM loss, cosine annealing scheduler
+1. **Pre-training** (50 epochs): L1 + 0.1×SSIM loss, ReduceLROnPlateau scheduler
 2. **GAN Phase** (100 epochs):
-   - Train discriminator first (generator frozen)
+   - Train discriminator every 3rd batch (generator frozen)
    - Train generator with gradient clipping
    - Both use mixed precision autocast
 

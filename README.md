@@ -10,6 +10,23 @@ This project implements a deep learning approach to single-image super-resolutio
 - **Two-stage training**: MSE pre-training followed by adversarial fine-tuning
 - **Dataset**: 111,000+ training images for robust learning
 
+## Project Structure
+
+```
+SuperResolution/
+├── train.py           # Main training script (pre-train + GAN phases)
+├── generator.py       # Generator architecture (ResBlocks, ChannelAttention)
+├── discriminator.py   # PatchGAN discriminator + RelativisticAverageLoss
+├── dataset.py         # IterableDataset for streaming .pt files
+├── utils.py           # PSNR/SSIM metric implementations
+├── config.py          # Centralized hyperparameters and settings
+├── scripts/
+│   ├── convert_to_pt.py   # Preprocessing: parquet → .pt tensors
+│   └── debug.py           # Debug utilities for data inspection
+├── checkpoints/       # Model checkpoints
+└── samples/           # Generated sample images
+```
+
 ## Samples
 
 ![Sample 1](epoch_100_sample_1.png)
