@@ -64,14 +64,37 @@ SuperResolution/
    - Discriminator learning rate: 1e-6
    - Cosine annealing LR schedule
 
-## Requirements
+## Data
+
+The training data for this project is expected to be in Parquet format, containing "X_jets_LR" and "X_jets" columns for low-resolution and high-resolution images, respectively.
+
+Due to the large size of the dataset, it is not included in this repository. You will need to download the data separately and place it in a directory.
+
+## Training
+
+The training process is divided into two main steps: data preprocessing and model training.
+
+### 1. Data Preprocessing
+
+The `scripts/convert_to_pt.py` script is used to convert the Parquet files into PyTorch tensors, which are more efficient for training. You should first modify the script to point to your data directory.
+
+### 2. Model Training
+
+The `train.sh` script is provided to run the training process.
+
+```bash
+bash train.sh
 ```
-torch>=2.0.0
-torchvision
-pillow
-scikit-image
-tqdm
-numpy
+This script will first pre-train the generator and then perform GAN training. The script will:
+- Calculate normalization stats.
+- Run the two-phase training process.
+- Save model checkpoints in the `checkpoints` directory.
+- Save training logs in `checkpoints/training_log.csv`.
+- Save sample generated images in the `samples` directory.
+
+## Requirements
+
+The requirements for this project are listed in the `pyproject.toml` file and can be installed using `uv`.
 ```
 
 ## Usage
