@@ -1,0 +1,23 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.parquet
+data/
+.DS_Store
+checkpoints/
+wandb/
+logs/
+checkpoints/
+samples/
+samples_1/
+
+CLAUDE.md
+.claude/
+.vscode/

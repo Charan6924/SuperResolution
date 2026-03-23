@@ -1,0 +1,88 @@
+# Super-Resolution GAN for Image Upscaling
+
+A PyTorch implementation of SRGAN (Super-Resolution Generative Adversarial Network) for upscaling low-resolution images from 64×64 to 125×125 pixels with enhanced perceptual quality.
+
+## Overview
+
+This project implements a deep learning approach to single-image super-resolution using:
+- **Generator**: 16-block residual network with channel attention mechanisms
+- **Discriminator**: PatchGAN discriminator for realistic texture generation
+- **Two-stage training**: MSE pre-training followed by adversarial fine-tuning
+- **Dataset**: 111,000+ training images for robust learning
+
+## Project Structure
+
+```
+SuperResolution/
+├── train.py           # Main training script (pre-train + GAN phases)
+├── generator.py       # Generator architecture (ResBlocks, ChannelAttention)
+├── discriminator.py   # PatchGAN discriminator + RelativisticAverageLoss
+├── dataset.py         # IterableDataset for streaming .pt files
+├── utils.py           # PSNR/SSIM metric implementations
+├── config.py          # Centralized hyperparameters and settings
+├── scripts/
+│   ├── convert_to_pt.py   # Preprocessing: parquet → .pt tensors
+│   └── debug.py           # Debug utilities for data inspection
+├── checkpoints/       # Model checkpoints
+└── samples/           # Generated sample images
+```
+
+## Samples
+
+![Sample 1](epoch_100_sample_0.png)
+![Sample 2](epoch_100_sample_2.png)
+![Sample 3](epoch_100_sample_3.png)
+
+## Key Features
+
+- Residual blocks with batch normalization for stable training
+- Channel attention modules for adaptive feature refinement
+- Comprehensive metrics: MSE, PSNR, SSIM
+- PyTorch 2.0 compatible with torch.compile() optimization
+- Early stopping to prevent overfitting
+- Checkpoint saving for best model preservation
+
+## Architecture
+
+**Generator**
+- Initial 9×9 convolution layer
+- 16 residual blocks with PReLU activation
+- Channel attention at blocks 8 and 16
+- Pixel shuffle upsampling (2× scale)
+- Bilinear interpolation for final resize to 125×125
+
+**Discriminator**
+- VGG-style architecture with strided convolutions
+- LeakyReLU activation and batch normalization
+- PatchGAN output for local realism assessment
+
+## Training Strategy
+
+1. **Phase 1**: Generator pre-training with L1 + SSIM loss for pixel-perfect baseline
+2. **Phase 2**: GAN training with combined adversarial, pixel, and SSIM loss
+   - Generator learning rate: 1e-4
+   - Discriminator learning rate: 1e-6
+   - Cosine annealing LR schedule
+
+## Requirements
+```
+torch>=2.0.0
+torchvision
+pillow
+scikit-image
+tqdm
+numpy
+```
+
+## Usage
+```python
+# Load pretrained model
+generator = Generator().to(device)
+checkpoint = torch.load('checkpoints/best_model.pt')
+generator.load_state_dict(checkpoint['generator'])
+
+# Upscale image
+with torch.no_grad():
+    hr_image = generator(lr_image)
+```
+
