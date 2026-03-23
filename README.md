@@ -48,8 +48,8 @@ SuperResolution/
 - Initial 9×9 convolution layer
 - 16 residual blocks with PReLU activation
 - Channel attention at blocks 8 and 16
-- Pixel shuffle upsampling (2× scale)
-- Bilinear interpolation for final resize to 125×125
+- Pixel shuffle upsampling (2× scale, 64→128)
+- Crop to final 125×125 output
 
 **Discriminator**
 - VGG-style architecture with strided convolutions
