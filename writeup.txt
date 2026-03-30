@@ -1,0 +1,36 @@
+Choices made in model selection and optimization:
+
+Generator
+
+I used a residual network with 16 Resblocks similar to the one used in the ESRGAN paper. Each residual block uses
+a scaling factor of 0.1 to prevent gradient explosion. Channel attention is used to allow the network to adaptively
+weight feature channels. The 64x64 input is upsampled to 128x128 using PixelShuffle and then the last three pixels are
+cropped to get the final 125x125 output.
+
+Discriminator
+I used a PatchGan discriminator instead of a standard discriminator. This provides feedback across the image, helping
+the generator make more realistic images. The discriminator uses kaiming initialization to ensure stable training.
+
+Loss functions
+
+The generator is trained with a composite loss:                                                                                                      
+
+Phase 1 : L = L_pixel + 0.1 × L_SSIM                                                                                                   
+Phase 2 : L = 0.005 × L_adv + 1.0 × L_pixel + 0.3 × L_SSIM 
+
+L_pixel : A weighted L1 loss that applies a greater weight to non-zero regions.
+L_SSIM : A loss that encourages structural similarity between the generated and target images.
+L_adv : The adversarial loss that encourages the generator to produce images that can fool the discriminator. I used
+Relativistic Average GAN loss, which measures the probability that the real image is more realistic than the fake
+one. This provides more stable gradients and has shown to produce better results in image generation tasks.
+
+Optimization
+
+The training is done in two phases. In the first phase the generator is pretrained for 50 epochs with just pixel and
+SSIM loss only. This is done to ensure that the generator learns to produce reasonable images before the 
+adversarial training starts. In the second phase, the adversarial loss is added and both the generator and discriminator
+are trained for 100 epochs. The discriminator is updated every 3 steps to prevent the discriminator from overpowering 
+the generator. Gradient clipping is used to prevent exploding gradients.
+
+Mixed precision training has been used to speed up the training process. AdamW was used as the optimizer
+with a learning rate of 1e-4 for the generator and 1e-6 for the discriminator.
